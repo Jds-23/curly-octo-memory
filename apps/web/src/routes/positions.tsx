@@ -83,8 +83,8 @@ function PositionsContent() {
 	};
 
 	const handleCreatePosition = () => {
-		// TODO: Navigate to position creation or external Uniswap app
-		window.open("https://app.uniswap.org/", "_blank");
+		// Navigate to our mint position page
+		window.location.href = "/mint-position";
 	};
 
 	if (isLoading) {

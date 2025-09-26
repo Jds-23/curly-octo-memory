@@ -10,11 +10,17 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as PositionsRouteImport } from './routes/positions'
+import { Route as MintPositionRouteImport } from './routes/mint-position'
 import { Route as IndexRouteImport } from './routes/index'
 
 const PositionsRoute = PositionsRouteImport.update({
   id: '/positions',
   path: '/positions',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MintPositionRoute = MintPositionRouteImport.update({
+  id: '/mint-position',
+  path: '/mint-position',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -25,27 +31,31 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/mint-position': typeof MintPositionRoute
   '/positions': typeof PositionsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/mint-position': typeof MintPositionRoute
   '/positions': typeof PositionsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/mint-position': typeof MintPositionRoute
   '/positions': typeof PositionsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/positions'
+  fullPaths: '/' | '/mint-position' | '/positions'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/positions'
-  id: '__root__' | '/' | '/positions'
+  to: '/' | '/mint-position' | '/positions'
+  id: '__root__' | '/' | '/mint-position' | '/positions'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  MintPositionRoute: typeof MintPositionRoute
   PositionsRoute: typeof PositionsRoute
 }
 
@@ -56,6 +66,13 @@ declare module '@tanstack/react-router' {
       path: '/positions'
       fullPath: '/positions'
       preLoaderRoute: typeof PositionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mint-position': {
+      id: '/mint-position'
+      path: '/mint-position'
+      fullPath: '/mint-position'
+      preLoaderRoute: typeof MintPositionRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -70,6 +87,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  MintPositionRoute: MintPositionRoute,
   PositionsRoute: PositionsRoute,
 }
 export const routeTree = rootRouteImport

@@ -10,7 +10,7 @@ interface CurrencyMetadata {
 	isNative?: boolean;
 }
 
-interface Currency {
+interface ApiCurrency {
 	chainId: number;
 	address: string;
 	symbol: string;
@@ -35,7 +35,7 @@ interface CurrenciesRequest {
 }
 
 // Helper function to call Relay API
-async function fetchCurrencies(params: CurrenciesRequest): Promise<Currency[]> {
+async function fetchCurrencies(params: CurrenciesRequest): Promise<ApiCurrency[]> {
 	const response = await fetch(`${RELAY_API_BASE_URL}/currencies/v2`, {
 		method: "POST",
 		headers: {
@@ -49,7 +49,7 @@ async function fetchCurrencies(params: CurrenciesRequest): Promise<Currency[]> {
 		throw new Error(`Relay API error: ${response.status} ${response.statusText} - ${errorText}`);
 	}
 
-	return response.json() as Promise<Currency[]>;
+	return response.json() as Promise<ApiCurrency[]>;
 }
 
 // Input validation schemas
@@ -84,7 +84,7 @@ const currencyByAddressInputSchema = z.object({
 });
 
 // tRPC router
-export const currenciesRouter = router({
+export const currenciesRouter: any = router({
 	// General currencies query
 	getCurrencies: publicProcedure
 		.input(currenciesInputSchema)
@@ -95,6 +95,10 @@ export const currenciesRouter = router({
 					success: true,
 					currencies,
 					message: `Found ${currencies.length} currencies`,
+				} as {
+					success: boolean;
+					currencies: any[];
+					message: string;
 				};
 			} catch (error) {
 				console.error("Error fetching currencies:", error);
@@ -102,7 +106,7 @@ export const currenciesRouter = router({
 					success: false,
 					currencies: [],
 					message: `Error fetching currencies: ${error instanceof Error ? error.message : "Unknown error"}`,
-				};
+				} as any;
 			}
 		}),
 

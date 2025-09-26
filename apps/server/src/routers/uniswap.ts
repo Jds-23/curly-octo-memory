@@ -1,10 +1,32 @@
 import { z } from "zod";
 import { publicProcedure, router } from "../lib/trpc";
+import { createPublicClient, createWalletClient, http } from "viem";
+import { mainnet, unichain } from "viem/chains";
+
+// Minimal type definitions to replace SDK imports
+interface Token {
+	chainId: number;
+	address: string;
+	decimals: number;
+	symbol: string;
+	name: string;
+}
+
+// ChainId constants
+const ChainId = {
+	MAINNET: 1,
+	UNICHAIN: 130,
+} as const;
+
+// Helper function to calculate nearest usable tick
+function nearestUsableTick(tick: number, tickSpacing: number): number {
+	return Math.round(tick / tickSpacing) * tickSpacing;
+}
 
 const UNISWAP_INTERFACE_API_URL = "https://interface.gateway.uniswap.org/v2/pools.v1.PoolsService/ListPositions";
 
 // Types and interfaces based on Uniswap Interface API
-interface Token {
+interface ApiToken {
 	chainId: number;
 	address: string;
 	symbol: string;
@@ -18,8 +40,8 @@ interface PoolPosition {
 	tickLower: string;
 	tickUpper: string;
 	liquidity: string;
-	token0: Token;
-	token1: Token;
+	token0: ApiToken;
+	token1: ApiToken;
 	feeTier: string;
 	currentTick: string;
 	currentPrice: string;
@@ -55,6 +77,25 @@ interface Position {
 interface ListPositionsResponse {
 	positions: Position[];
 }
+
+// Constants for Uniswap v4 contracts
+const CONTRACTS = {
+	STATE_VIEW_ADDRESS: "0x86e8631a016f9068c3f085faf484ee3f5fdee8f2", // StateView contract
+	POSITION_MANAGER: "0x4529a01c7a0410167c5740c487a8de60232617bf", // Position Manager (Unichain)
+	PERMIT2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+};
+
+// Chain configurations
+const CHAIN_CONFIGS: { [key: number]: { chain: any; rpcUrl: string } } = {
+	[ChainId.MAINNET]: {
+		chain: mainnet,
+		rpcUrl: "https://eth-mainnet.g.alchemy.com/v2/demo", // Use your actual RPC URL
+	},
+	130: { // Unichain
+		chain: unichain,
+		rpcUrl: "https://unichain-sepolia.g.alchemy.com/v2/demo", // Use your actual RPC URL
+	},
+};
 
 // Helper function to call Uniswap Interface API
 async function fetchPositionsFromUniswap(address: string): Promise<ListPositionsResponse> {
@@ -109,6 +150,10 @@ export const uniswapRouter = router({
 						success: true,
 						positions: [],
 						message: "No positions found for this address",
+					} as {
+						success: boolean;
+						positions: any[];
+						message: string;
 					};
 				}
 
@@ -162,6 +207,10 @@ export const uniswapRouter = router({
 					success: true,
 					positions: transformedPositions,
 					message: `Found ${transformedPositions.length} positions`,
+				} as {
+					success: boolean;
+					positions: any[];
+					message: string;
 				};
 			} catch (error) {
 				console.error("Error fetching positions:", error);
@@ -169,6 +218,10 @@ export const uniswapRouter = router({
 					success: false,
 					positions: [],
 					message: `Error fetching positions: ${error instanceof Error ? error.message : "Unknown error"}`,
+				} as {
+					success: boolean;
+					positions: any[];
+					message: string;
 				};
 			}
 		}),
@@ -198,6 +251,10 @@ export const uniswapRouter = router({
 						success: false,
 						position: null,
 						message: "Position not found",
+					} as {
+						success: boolean;
+						position: any;
+						message: string;
 					};
 				}
 
@@ -217,6 +274,10 @@ export const uniswapRouter = router({
 						success: false,
 						position: null,
 						message: "Unsupported position type",
+					} as {
+						success: boolean;
+						position: any;
+						message: string;
 					};
 				}
 
@@ -250,6 +311,9 @@ export const uniswapRouter = router({
 				return {
 					success: true,
 					position: transformedPosition,
+				} as {
+					success: boolean;
+					position: any;
 				};
 			} catch (error) {
 				console.error("Error fetching position details:", error);
@@ -257,6 +321,179 @@ export const uniswapRouter = router({
 					success: false,
 					position: null,
 					message: `Error fetching position details: ${error instanceof Error ? error.message : "Unknown error"}`,
+				} as {
+					success: boolean;
+					position: any;
+					message: string;
+				};
+			}
+		}),
+
+	mintPosition: publicProcedure
+		.input(
+			z.object({
+				tokenA: z.object({
+					address: z.string(),
+					symbol: z.string(),
+					name: z.string(),
+					decimals: z.number(),
+					chainId: z.number(),
+				}),
+				tokenB: z.object({
+					address: z.string(),
+					symbol: z.string(),
+					name: z.string(),
+					decimals: z.number(),
+					chainId: z.number(),
+				}),
+				amountA: z.number().positive(),
+				amountB: z.number().positive(),
+				feeTier: z.number(),
+				fullRange: z.boolean(),
+				tickRange: z.number().optional(),
+				slippageTolerance: z.number().min(0.1).max(50),
+				recipient: z.string().regex(/^0x[a-fA-F0-9]{40}$/, "Invalid Ethereum address"),
+			}),
+		)
+		.mutation(async ({ input }) => {
+			try {
+				const {
+					tokenA,
+					tokenB,
+					amountA,
+					amountB,
+					feeTier,
+					fullRange,
+					tickRange = 500,
+					slippageTolerance,
+					recipient,
+				} = input;
+
+				// Validate chain support
+				const chainConfig = CHAIN_CONFIGS[tokenA.chainId];
+				if (!chainConfig) {
+					return {
+						success: false,
+						message: `Unsupported chain ID: ${tokenA.chainId}`,
+						tokenId: null,
+					} as {
+						success: boolean;
+						message: string;
+						tokenId: string | null;
+					};
+				}
+
+				// Create token definitions
+				const token0: Token = {
+					chainId: tokenA.chainId,
+					address: tokenA.address === "0x0000000000000000000000000000000000000000"
+						? "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" // WETH for ETH
+						: tokenA.address,
+					decimals: tokenA.decimals,
+					symbol: tokenA.symbol,
+					name: tokenA.name,
+				};
+
+				const token1: Token = {
+					chainId: tokenB.chainId,
+					address: tokenB.address === "0x0000000000000000000000000000000000000000"
+						? "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" // WETH for ETH
+						: tokenB.address,
+					decimals: tokenB.decimals,
+					symbol: tokenB.symbol,
+					name: tokenB.name,
+				};
+
+				// Ensure token ordering (token0 < token1)
+				const [sortedToken0, sortedToken1] = token0.address.toLowerCase() < token1.address.toLowerCase()
+					? [token0, token1]
+					: [token1, token0];
+
+				const token0IsA = sortedToken0.address === token0.address;
+
+				// Calculate tick spacing based on fee tier
+				const getTickSpacing = (feeTier: number): number => {
+					switch (feeTier) {
+						case 100: return 1;   // 0.01%
+						case 500: return 10;  // 0.05%
+						case 3000: return 60; // 0.3%
+						case 10000: return 200; // 1%
+						default: return 60; // Default to 0.3% fee tier
+					}
+				};
+
+				const tickSpacing = getTickSpacing(feeTier);
+
+				// Calculate tick boundaries
+				let tickLower: number;
+				let tickUpper: number;
+
+				if (fullRange) {
+					const MIN_TICK = -887272;
+					const MAX_TICK = 887272;
+					tickLower = nearestUsableTick(MIN_TICK, tickSpacing);
+					tickUpper = nearestUsableTick(MAX_TICK, tickSpacing);
+				} else {
+					// Use a mock current tick for demonstration
+					const currentTick = 0; // In production, fetch this from the pool
+					tickLower = nearestUsableTick(currentTick - tickRange, tickSpacing);
+					tickUpper = nearestUsableTick(currentTick + tickRange, tickSpacing);
+				}
+
+				// Convert amounts to token units
+				const amountADesired = BigInt(Math.floor(amountA * 10 ** tokenA.decimals));
+				const amountBDesired = BigInt(Math.floor(amountB * 10 ** tokenB.decimals));
+
+				const amount0Desired = token0IsA ? amountADesired.toString() : amountBDesired.toString();
+				const amount1Desired = token0IsA ? amountBDesired.toString() : amountADesired.toString();
+
+				// Calculate slippage tolerance in basis points
+				const slippageToleranceBps = Math.floor(slippageTolerance * 100);
+				const deadline = Math.floor(Date.now() / 1000) + 20 * 60; // 20 minutes
+
+				// Mock transaction data - in production, you'd use the actual SDK or contract calls
+				const mockCalldata = "0x"; // This would be the actual encoded function call
+				const mockValue = "0"; // ETH value to send
+
+				// For now, return the transaction data instead of executing it
+				// In a production app, you would execute this transaction or return it for the frontend to execute
+				return {
+					success: true,
+					message: "Position mint transaction prepared successfully (mock implementation)",
+					tokenId: "pending", // This would be returned after transaction execution
+					transactionData: {
+						to: CONTRACTS.POSITION_MANAGER,
+						data: mockCalldata,
+						value: mockValue,
+						gasLimit: "500000", // Estimate gas limit
+					},
+					position: {
+						tokenA: sortedToken0,
+						tokenB: sortedToken1,
+						amountA: token0IsA ? amountA : amountB,
+						amountB: token0IsA ? amountB : amountA,
+						feeTier,
+						tickLower,
+						tickUpper,
+						liquidity: "mock_liquidity", // This would be calculated from actual pool data
+					},
+				} as {
+					success: boolean;
+					message: string;
+					tokenId: string | null;
+					transactionData?: any;
+					position?: any;
+				};
+			} catch (error) {
+				console.error("Error preparing mint position:", error);
+				return {
+					success: false,
+					message: `Error preparing position mint: ${error instanceof Error ? error.message : "Unknown error"}`,
+					tokenId: null,
+				} as {
+					success: boolean;
+					message: string;
+					tokenId: string | null;
 				};
 			}
 		}),
