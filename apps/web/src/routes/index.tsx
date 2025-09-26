@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { PortoAuth } from "@/components/porto-auth";
+import { CurrenciesDemo } from "@/components/currencies-demo";
 import { trpc } from "@/utils/trpc";
 
 export const Route = createFileRoute("/")({
@@ -11,7 +12,7 @@ function HomeComponent() {
 	const healthCheck = useQuery(trpc.healthCheck.queryOptions());
 
 	return (
-		<div className="container mx-auto max-w-3xl px-4 py-2">
+		<div className="container mx-auto max-w-4xl px-4 py-2">
 			<div className="grid gap-6">
 				<PortoAuth />
 
@@ -30,6 +31,8 @@ function HomeComponent() {
 						</span>
 					</div>
 				</section>
+
+				<CurrenciesDemo />
 			</div>
 		</div>
 	);
