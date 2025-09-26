@@ -11,11 +11,14 @@ This is the React frontend for the Better-T-Stack application, built with:
 - **Styling**: TailwindCSS v4 + shadcn/ui components
 - **State Management**: TanStack Query for server state, React context for client state
 - **API Client**: tRPC client for type-safe server communication
+- **Web3 Integration**: Wagmi + Viem for Ethereum interactions, Porto for account abstraction
 
 ## Key Files
 
-- `src/main.tsx` - React app entry point and router setup
+- `src/main.tsx` - React app entry point, router setup, and Wagmi provider configuration
+- `src/config/wagmi.ts` - Wagmi configuration with Porto, injected, and WalletConnect connectors
 - `src/routes/` - File-based routing with TanStack Router
+- `src/components/porto-auth.tsx` - Porto authentication component with wallet connection UI
 - `src/utils/trpc.ts` - tRPC client configuration and React Query setup
 - `src/components/` - React components (shadcn/ui in `ui/` subdirectory)
 - `src/lib/utils.ts` - Utility functions including `cn` for className merging
@@ -56,9 +59,17 @@ This is the React frontend for the Better-T-Stack application, built with:
 - Component styling follows shadcn/ui conventions
 - CSS-in-JS patterns for dynamic styling
 
+## Web3 Integration
+
+- **Wagmi Configuration**: Multi-chain setup (mainnet, sepolia, baseSepolia) in `src/config/wagmi.ts`
+- **Porto Integration**: Next-generation account abstraction with sign-in buttons on homepage
+- **Wallet Support**: Porto, MetaMask (injected), and WalletConnect connectors
+- **Authentication Flow**: `PortoAuth` component handles connection state and wallet interactions
+
 ## Environment
 
 - Vite-based development server
 - Environment variables prefixed with `VITE_`
 - Deploys to Cloudflare Pages
 - `VITE_SERVER_URL` points to backend API
+- `VITE_WALLETCONNECT_PROJECT_ID` for WalletConnect integration

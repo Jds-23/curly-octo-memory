@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a Better-T-Stack monorepo with a React frontend and Hono/tRPC backend, both deployed to Cloudflare Workers. The stack includes:
 
-- **Frontend** (`apps/web`): React + TanStack Router + TailwindCSS + shadcn/ui
+- **Frontend** (`apps/web`): React + TanStack Router + TailwindCSS + shadcn/ui + Wagmi/Viem + Porto
 - **Backend** (`apps/server`): Hono + tRPC + Drizzle ORM + Cloudflare D1 (SQLite)
 - **Tooling**: Turborepo + Biome (linting/formatting) + Bun package manager
 
@@ -17,6 +17,7 @@ This is a Better-T-Stack monorepo with a React frontend and Hono/tRPC backend, b
 - **State Management**: TanStack Query for server state, React context for client state
 - **Routing**: File-based routing with TanStack Router
 - **Styling**: TailwindCSS with shadcn/ui components, uses CSS-in-JS patterns
+- **Blockchain Integration**: Wagmi + Viem for Ethereum interactions, Porto for next-gen account management
 
 ### Monorepo Structure
 
@@ -64,6 +65,7 @@ apps/
 ### Web App (`apps/web/src/`)
 - `routes/` - File-based routing with TanStack Router
 - `components/` - React components (including shadcn/ui in `ui/`)
+- `config/wagmi.ts` - Wagmi configuration with Porto, injected, and WalletConnect connectors
 - `utils/trpc.ts` - tRPC client configuration and React Query setup
 - `lib/utils.ts` - Utility functions (includes `cn` for className merging)
 
@@ -80,3 +82,6 @@ apps/
 - Environment is Cloudflare Workers (not Node.js)
 - Database operations use Drizzle ORM, not raw SQL
 - All API calls go through tRPC for type safety
+- Wagmi provider wraps the entire app in `main.tsx` with Porto connector configured
+- Porto enables next-generation account abstraction for Ethereum interactions
+- Web3 authentication available on homepage via Porto sign-in buttons
