@@ -1,8 +1,8 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
+import { MintPositionForm } from "@/components/mint-position-form";
 import { Button } from "@/components/ui/button";
 import { WalletGuard } from "@/components/wallet-guard";
-import { MintPositionForm } from "@/components/mint-position-form";
 
 export const Route = createFileRoute("/mint-position")({
 	component: MintPositionComponent,
@@ -55,10 +55,12 @@ function MintPositionContent() {
 			{/* Info Section */}
 			<div className="mt-8 space-y-4 text-center text-muted-foreground text-sm">
 				<p>
-					Liquidity positions are represented as NFTs. You'll earn fees proportional to your share of the pool.
+					Liquidity positions are represented as NFTs. You'll earn fees
+					proportional to your share of the pool.
 				</p>
 				<p>
-					Make sure to have enough tokens in your wallet and approve the position manager contract to spend your tokens.
+					Make sure to have enough tokens in your wallet and approve the
+					position manager contract to spend your tokens.
 				</p>
 			</div>
 		</div>

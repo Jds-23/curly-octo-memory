@@ -125,7 +125,8 @@ function PositionsContent() {
 		);
 	}
 
-	const positions = (positionsData?.positions || []) as unknown as EnhancedPositionData[];
+	const positions = (positionsData?.positions ||
+		[]) as unknown as EnhancedPositionData[];
 	const hasPositions = positions.length > 0;
 
 	return (

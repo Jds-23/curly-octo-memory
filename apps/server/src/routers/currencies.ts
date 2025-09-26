@@ -35,7 +35,9 @@ interface CurrenciesRequest {
 }
 
 // Helper function to call Relay API
-async function fetchCurrencies(params: CurrenciesRequest): Promise<ApiCurrency[]> {
+async function fetchCurrencies(
+	params: CurrenciesRequest,
+): Promise<ApiCurrency[]> {
 	const response = await fetch(`${RELAY_API_BASE_URL}/currencies/v2`, {
 		method: "POST",
 		headers: {
@@ -46,7 +48,9 @@ async function fetchCurrencies(params: CurrenciesRequest): Promise<ApiCurrency[]
 
 	if (!response.ok) {
 		const errorText = await response.text();
-		throw new Error(`Relay API error: ${response.status} ${response.statusText} - ${errorText}`);
+		throw new Error(
+			`Relay API error: ${response.status} ${response.statusText} - ${errorText}`,
+		);
 	}
 
 	return response.json() as Promise<ApiCurrency[]>;
@@ -183,7 +187,8 @@ export const currenciesRouter: any = router({
 					success: true,
 					currencies,
 					currency: currencies[0] || null,
-					message: currencies.length > 0 ? "Currency found" : "Currency not found",
+					message:
+						currencies.length > 0 ? "Currency found" : "Currency not found",
 				};
 			} catch (error) {
 				console.error("Error fetching currency by address:", error);
@@ -200,8 +205,10 @@ export const currenciesRouter: any = router({
 	getCurrenciesByTokens: publicProcedure
 		.input(
 			z.object({
-				tokens: z.array(z.string()).min(1, "At least one token address is required"),
-			})
+				tokens: z
+					.array(z.string())
+					.min(1, "At least one token address is required"),
+			}),
 		)
 		.query(async ({ input }) => {
 			try {

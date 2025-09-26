@@ -1,7 +1,7 @@
-import { z } from "zod";
-import { publicProcedure, router } from "../lib/trpc";
 import { createPublicClient, createWalletClient, http } from "viem";
 import { mainnet, unichain } from "viem/chains";
+import { z } from "zod";
+import { publicProcedure, router } from "../lib/trpc";
 
 // Minimal type definitions to replace SDK imports
 interface Token {
@@ -23,7 +23,8 @@ function nearestUsableTick(tick: number, tickSpacing: number): number {
 	return Math.round(tick / tickSpacing) * tickSpacing;
 }
 
-const UNISWAP_INTERFACE_API_URL = "https://interface.gateway.uniswap.org/v2/pools.v1.PoolsService/ListPositions";
+const UNISWAP_INTERFACE_API_URL =
+	"https://interface.gateway.uniswap.org/v2/pools.v1.PoolsService/ListPositions";
 
 // Types and interfaces based on Uniswap Interface API
 interface ApiToken {
@@ -91,30 +92,44 @@ const CHAIN_CONFIGS: { [key: number]: { chain: any; rpcUrl: string } } = {
 		chain: mainnet,
 		rpcUrl: "https://eth-mainnet.g.alchemy.com/v2/demo", // Use your actual RPC URL
 	},
-	130: { // Unichain
+	130: {
+		// Unichain
 		chain: unichain,
 		rpcUrl: "https://unichain-sepolia.g.alchemy.com/v2/demo", // Use your actual RPC URL
 	},
 };
 
 // Helper function to call Uniswap Interface API
-async function fetchPositionsFromUniswap(address: string): Promise<ListPositionsResponse> {
+async function fetchPositionsFromUniswap(
+	address: string,
+): Promise<ListPositionsResponse> {
 	const response = await fetch(UNISWAP_INTERFACE_API_URL, {
 		method: "POST",
 		headers: {
-			"accept": "*/*",
+			accept: "*/*",
 			"accept-language": "en-US,en;q=0.9",
 			"connect-protocol-version": "1",
 			"content-type": "application/json",
-			"origin": "https://app.uniswap.org",
-			"referer": "https://app.uniswap.org/",
-			"user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
+			origin: "https://app.uniswap.org",
+			referer: "https://app.uniswap.org/",
+			"user-agent":
+				"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
 		},
 		body: JSON.stringify({
 			address: address,
-			chainIds: [1, 130, 8453, 42161, 137, 10, 56, 43114, 480, 324, 1868, 7777777, 42220, 81457], // All supported chains
-			protocolVersions: ["PROTOCOL_VERSION_V4", "PROTOCOL_VERSION_V3", "PROTOCOL_VERSION_V2"],
-			positionStatuses: ["POSITION_STATUS_IN_RANGE", "POSITION_STATUS_OUT_OF_RANGE"],
+			chainIds: [
+				1, 130, 8453, 42161, 137, 10, 56, 43114, 480, 324, 1868, 7777777, 42220,
+				81457,
+			], // All supported chains
+			protocolVersions: [
+				"PROTOCOL_VERSION_V4",
+				"PROTOCOL_VERSION_V3",
+				"PROTOCOL_VERSION_V2",
+			],
+			positionStatuses: [
+				"POSITION_STATUS_IN_RANGE",
+				"POSITION_STATUS_OUT_OF_RANGE",
+			],
 			pageSize: 100, // Fetch more positions
 			pageToken: "",
 			includeHidden: true,
@@ -122,7 +137,9 @@ async function fetchPositionsFromUniswap(address: string): Promise<ListPositions
 	});
 
 	if (!response.ok) {
-		throw new Error(`Uniswap API error: ${response.status} ${response.statusText}`);
+		throw new Error(
+			`Uniswap API error: ${response.status} ${response.statusText}`,
+		);
 	}
 
 	return response.json() as Promise<ListPositionsResponse>;
@@ -158,50 +175,52 @@ export const uniswapRouter = router({
 				}
 
 				// Transform positions to a consistent format
-				const transformedPositions = response.positions.map((position) => {
-					// Get pool position data based on protocol version
-					let poolPosition: PoolPosition | undefined;
-					let hooks: string[] = [];
+				const transformedPositions = response.positions
+					.map((position) => {
+						// Get pool position data based on protocol version
+						let poolPosition: PoolPosition | undefined;
+						let hooks: string[] = [];
 
-					if (position.v4Position) {
-						poolPosition = position.v4Position.poolPosition;
-						hooks = position.v4Position.hooks.map(h => h.address);
-					} else if (position.v3Position) {
-						poolPosition = position.v3Position;
-					} else if (position.v2Position) {
-						// V2 positions have different structure, handle separately if needed
-						return null;
-					}
+						if (position.v4Position) {
+							poolPosition = position.v4Position.poolPosition;
+							hooks = position.v4Position.hooks.map((h) => h.address);
+						} else if (position.v3Position) {
+							poolPosition = position.v3Position;
+						} else if (position.v2Position) {
+							// V2 positions have different structure, handle separately if needed
+							return null;
+						}
 
-					if (!poolPosition) return null;
+						if (!poolPosition) return null;
 
-					return {
-						tokenId: poolPosition.tokenId,
-						chainId: position.chainId,
-						protocolVersion: position.protocolVersion,
-						status: position.status,
-						timestamp: position.timestamp,
-						tickLower: Number.parseInt(poolPosition.tickLower),
-						tickUpper: Number.parseInt(poolPosition.tickUpper),
-						liquidity: poolPosition.liquidity,
-						token0: poolPosition.token0,
-						token1: poolPosition.token1,
-						feeTier: Number.parseInt(poolPosition.feeTier),
-						currentTick: Number.parseInt(poolPosition.currentTick),
-						currentPrice: poolPosition.currentPrice,
-						tickSpacing: Number.parseInt(poolPosition.tickSpacing),
-						token0UncollectedFees: poolPosition.token0UncollectedFees,
-						token1UncollectedFees: poolPosition.token1UncollectedFees,
-						amount0: poolPosition.amount0,
-						amount1: poolPosition.amount1,
-						poolId: poolPosition.poolId,
-						totalLiquidityUsd: poolPosition.totalLiquidityUsd,
-						currentLiquidity: poolPosition.currentLiquidity,
-						apr: poolPosition.apr,
-						totalApr: poolPosition.totalApr,
-						hooks: hooks,
-					};
-				}).filter(Boolean); // Remove null values
+						return {
+							tokenId: poolPosition.tokenId,
+							chainId: position.chainId,
+							protocolVersion: position.protocolVersion,
+							status: position.status,
+							timestamp: position.timestamp,
+							tickLower: Number.parseInt(poolPosition.tickLower),
+							tickUpper: Number.parseInt(poolPosition.tickUpper),
+							liquidity: poolPosition.liquidity,
+							token0: poolPosition.token0,
+							token1: poolPosition.token1,
+							feeTier: Number.parseInt(poolPosition.feeTier),
+							currentTick: Number.parseInt(poolPosition.currentTick),
+							currentPrice: poolPosition.currentPrice,
+							tickSpacing: Number.parseInt(poolPosition.tickSpacing),
+							token0UncollectedFees: poolPosition.token0UncollectedFees,
+							token1UncollectedFees: poolPosition.token1UncollectedFees,
+							amount0: poolPosition.amount0,
+							amount1: poolPosition.amount1,
+							poolId: poolPosition.poolId,
+							totalLiquidityUsd: poolPosition.totalLiquidityUsd,
+							currentLiquidity: poolPosition.currentLiquidity,
+							apr: poolPosition.apr,
+							totalApr: poolPosition.totalApr,
+							hooks: hooks,
+						};
+					})
+					.filter(Boolean); // Remove null values
 
 				return {
 					success: true,
@@ -264,7 +283,7 @@ export const uniswapRouter = router({
 
 				if (position.v4Position) {
 					poolPosition = position.v4Position.poolPosition;
-					hooks = position.v4Position.hooks.map(h => h.address);
+					hooks = position.v4Position.hooks.map((h) => h.address);
 				} else if (position.v3Position) {
 					poolPosition = position.v3Position;
 				}
@@ -352,7 +371,9 @@ export const uniswapRouter = router({
 				fullRange: z.boolean(),
 				tickRange: z.number().optional(),
 				slippageTolerance: z.number().min(0.1).max(50),
-				recipient: z.string().regex(/^0x[a-fA-F0-9]{40}$/, "Invalid Ethereum address"),
+				recipient: z
+					.string()
+					.regex(/^0x[a-fA-F0-9]{40}$/, "Invalid Ethereum address"),
 			}),
 		)
 		.mutation(async ({ input }) => {
@@ -386,9 +407,10 @@ export const uniswapRouter = router({
 				// Create token definitions
 				const token0: Token = {
 					chainId: tokenA.chainId,
-					address: tokenA.address === "0x0000000000000000000000000000000000000000"
-						? "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" // WETH for ETH
-						: tokenA.address,
+					address:
+						tokenA.address === "0x0000000000000000000000000000000000000000"
+							? "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" // WETH for ETH
+							: tokenA.address,
 					decimals: tokenA.decimals,
 					symbol: tokenA.symbol,
 					name: tokenA.name,
@@ -396,29 +418,36 @@ export const uniswapRouter = router({
 
 				const token1: Token = {
 					chainId: tokenB.chainId,
-					address: tokenB.address === "0x0000000000000000000000000000000000000000"
-						? "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" // WETH for ETH
-						: tokenB.address,
+					address:
+						tokenB.address === "0x0000000000000000000000000000000000000000"
+							? "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" // WETH for ETH
+							: tokenB.address,
 					decimals: tokenB.decimals,
 					symbol: tokenB.symbol,
 					name: tokenB.name,
 				};
 
 				// Ensure token ordering (token0 < token1)
-				const [sortedToken0, sortedToken1] = token0.address.toLowerCase() < token1.address.toLowerCase()
-					? [token0, token1]
-					: [token1, token0];
+				const [sortedToken0, sortedToken1] =
+					token0.address.toLowerCase() < token1.address.toLowerCase()
+						? [token0, token1]
+						: [token1, token0];
 
 				const token0IsA = sortedToken0.address === token0.address;
 
 				// Calculate tick spacing based on fee tier
 				const getTickSpacing = (feeTier: number): number => {
 					switch (feeTier) {
-						case 100: return 1;   // 0.01%
-						case 500: return 10;  // 0.05%
-						case 3000: return 60; // 0.3%
-						case 10000: return 200; // 1%
-						default: return 60; // Default to 0.3% fee tier
+						case 100:
+							return 1; // 0.01%
+						case 500:
+							return 10; // 0.05%
+						case 3000:
+							return 60; // 0.3%
+						case 10000:
+							return 200; // 1%
+						default:
+							return 60; // Default to 0.3% fee tier
 					}
 				};
 
@@ -441,11 +470,19 @@ export const uniswapRouter = router({
 				}
 
 				// Convert amounts to token units
-				const amountADesired = BigInt(Math.floor(amountA * 10 ** tokenA.decimals));
-				const amountBDesired = BigInt(Math.floor(amountB * 10 ** tokenB.decimals));
+				const amountADesired = BigInt(
+					Math.floor(amountA * 10 ** tokenA.decimals),
+				);
+				const amountBDesired = BigInt(
+					Math.floor(amountB * 10 ** tokenB.decimals),
+				);
 
-				const amount0Desired = token0IsA ? amountADesired.toString() : amountBDesired.toString();
-				const amount1Desired = token0IsA ? amountBDesired.toString() : amountADesired.toString();
+				const amount0Desired = token0IsA
+					? amountADesired.toString()
+					: amountBDesired.toString();
+				const amount1Desired = token0IsA
+					? amountBDesired.toString()
+					: amountADesired.toString();
 
 				// Calculate slippage tolerance in basis points
 				const slippageToleranceBps = Math.floor(slippageTolerance * 100);
@@ -459,7 +496,8 @@ export const uniswapRouter = router({
 				// In a production app, you would execute this transaction or return it for the frontend to execute
 				return {
 					success: true,
-					message: "Position mint transaction prepared successfully (mock implementation)",
+					message:
+						"Position mint transaction prepared successfully (mock implementation)",
 					tokenId: "pending", // This would be returned after transaction execution
 					transactionData: {
 						to: CONTRACTS.POSITION_MANAGER,

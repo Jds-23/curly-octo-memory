@@ -1,4 +1,4 @@
-import { useQuery, type UseQueryOptions } from "@tanstack/react-query";
+import { type UseQueryOptions, useQuery } from "@tanstack/react-query";
 
 // Re-export types for convenience
 export interface CurrencyMetadata {
@@ -70,11 +70,15 @@ async function callTRPC<T>(procedure: string, input: any): Promise<T> {
 // General currencies hook using direct HTTP call
 export const useCurrencies = (
 	params: CurrenciesRequest,
-	options?: Omit<UseQueryOptions<CurrenciesResponse, Error>, "queryKey" | "queryFn">
+	options?: Omit<
+		UseQueryOptions<CurrenciesResponse, Error>,
+		"queryKey" | "queryFn"
+	>,
 ) => {
 	return useQuery({
 		queryKey: ["currencies.getCurrencies", params],
-		queryFn: () => callTRPC<CurrenciesResponse>("currencies.getCurrencies", params),
+		queryFn: () =>
+			callTRPC<CurrenciesResponse>("currencies.getCurrencies", params),
 		gcTime: 10 * 60 * 1000, // 10 minutes
 		staleTime: 5 * 60 * 1000, // 5 minutes
 		...options,
@@ -85,15 +89,22 @@ export const useCurrencies = (
 export const useSearchCurrencies = (
 	term: string,
 	chainIds?: number[],
-	options?: Omit<UseQueryOptions<CurrenciesResponse, Error>, "queryKey" | "queryFn">
+	options?: Omit<
+		UseQueryOptions<CurrenciesResponse, Error>,
+		"queryKey" | "queryFn"
+	>,
 ) => {
 	return useQuery({
-		queryKey: ["currencies.searchCurrencies", { term, chainIds, limit: TOKEN_LIMIT }],
-		queryFn: () => callTRPC<CurrenciesResponse>("currencies.searchCurrencies", {
-			term,
-			chainIds,
-			limit: TOKEN_LIMIT,
-		}),
+		queryKey: [
+			"currencies.searchCurrencies",
+			{ term, chainIds, limit: TOKEN_LIMIT },
+		],
+		queryFn: () =>
+			callTRPC<CurrenciesResponse>("currencies.searchCurrencies", {
+				term,
+				chainIds,
+				limit: TOKEN_LIMIT,
+			}),
 		enabled: term.length > 0,
 		gcTime: 10 * 60 * 1000, // 10 minutes
 		staleTime: 0, // Always refetch for search results
@@ -104,15 +115,19 @@ export const useSearchCurrencies = (
 // Default currencies list
 export const useDefaultCurrencies = (
 	chainIds?: number[],
-	limit: number = 100,
-	options?: Omit<UseQueryOptions<CurrenciesResponse, Error>, "queryKey" | "queryFn">
+	limit = 100,
+	options?: Omit<
+		UseQueryOptions<CurrenciesResponse, Error>,
+		"queryKey" | "queryFn"
+	>,
 ) => {
 	return useQuery({
 		queryKey: ["currencies.getDefaultCurrencies", { chainIds, limit }],
-		queryFn: () => callTRPC<CurrenciesResponse>("currencies.getDefaultCurrencies", {
-			chainIds,
-			limit,
-		}),
+		queryFn: () =>
+			callTRPC<CurrenciesResponse>("currencies.getDefaultCurrencies", {
+				chainIds,
+				limit,
+			}),
 		gcTime: 30 * 60 * 1000, // 30 minutes (longer cache for default list)
 		staleTime: 15 * 60 * 1000, // 15 minutes
 		...options,
@@ -123,14 +138,18 @@ export const useDefaultCurrencies = (
 export const useCurrencyByAddress = (
 	address: string,
 	chainId?: number,
-	options?: Omit<UseQueryOptions<CurrencyByAddressResponse, Error>, "queryKey" | "queryFn">
+	options?: Omit<
+		UseQueryOptions<CurrencyByAddressResponse, Error>,
+		"queryKey" | "queryFn"
+	>,
 ) => {
 	return useQuery({
 		queryKey: ["currencies.getCurrencyByAddress", { address, chainId }],
-		queryFn: () => callTRPC<CurrencyByAddressResponse>("currencies.getCurrencyByAddress", {
-			address,
-			chainId,
-		}),
+		queryFn: () =>
+			callTRPC<CurrencyByAddressResponse>("currencies.getCurrencyByAddress", {
+				address,
+				chainId,
+			}),
 		enabled: !!address,
 		gcTime: 30 * 60 * 1000, // 30 minutes
 		staleTime: 15 * 60 * 1000, // 15 minutes
@@ -141,13 +160,17 @@ export const useCurrencyByAddress = (
 // Get currencies by multiple token addresses
 export const useCurrenciesByTokens = (
 	tokens: string[],
-	options?: Omit<UseQueryOptions<CurrenciesResponse, Error>, "queryKey" | "queryFn">
+	options?: Omit<
+		UseQueryOptions<CurrenciesResponse, Error>,
+		"queryKey" | "queryFn"
+	>,
 ) => {
 	return useQuery({
 		queryKey: ["currencies.getCurrenciesByTokens", { tokens }],
-		queryFn: () => callTRPC<CurrenciesResponse>("currencies.getCurrenciesByTokens", {
-			tokens,
-		}),
+		queryFn: () =>
+			callTRPC<CurrenciesResponse>("currencies.getCurrenciesByTokens", {
+				tokens,
+			}),
 		enabled: tokens.length > 0,
 		gcTime: 20 * 60 * 1000, // 20 minutes
 		staleTime: 10 * 60 * 1000, // 10 minutes
@@ -158,7 +181,10 @@ export const useCurrenciesByTokens = (
 // Utility hook to get a single currency (returns the first match)
 export const useSingleCurrency = (
 	params: CurrenciesRequest,
-	options?: Omit<UseQueryOptions<Currency | null, Error>, "queryKey" | "queryFn">
+	options?: Omit<
+		UseQueryOptions<Currency | null, Error>,
+		"queryKey" | "queryFn"
+	>,
 ) => {
 	const query = useCurrencies(params);
 
@@ -171,8 +197,11 @@ export const useSingleCurrency = (
 // Popular tokens for a specific chain
 export const usePopularTokens = (
 	chainId: number,
-	limit: number = 20,
-	options?: Omit<UseQueryOptions<CurrenciesResponse, Error>, "queryKey" | "queryFn">
+	limit = 20,
+	options?: Omit<
+		UseQueryOptions<CurrenciesResponse, Error>,
+		"queryKey" | "queryFn"
+	>,
 ) => {
 	return useDefaultCurrencies([chainId], limit, options);
 };
@@ -181,7 +210,10 @@ export const usePopularTokens = (
 export const useMultiChainSearch = (
 	term: string,
 	chainIds: number[],
-	options?: Omit<UseQueryOptions<CurrenciesResponse, Error>, "queryKey" | "queryFn">
+	options?: Omit<
+		UseQueryOptions<CurrenciesResponse, Error>,
+		"queryKey" | "queryFn"
+	>,
 ) => {
 	return useSearchCurrencies(term, chainIds, {
 		enabled: term.length > 2 && chainIds.length > 0, // Require at least 3 characters and some chains

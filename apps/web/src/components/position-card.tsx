@@ -59,7 +59,7 @@ export function PositionCard({ position }: PositionCardProps) {
 		totalApr,
 		token0UncollectedFees,
 		token1UncollectedFees,
-		hooks
+		hooks,
 	} = position;
 	const feePercentage = (feeTier / 10000).toFixed(2);
 
@@ -115,14 +115,15 @@ export function PositionCard({ position }: PositionCardProps) {
 		const num = Number.parseFloat(value);
 		if (num >= 1000000) {
 			return `$${(num / 1000000).toFixed(2)}M`;
-		} else if (num >= 1000) {
+		}
+		if (num >= 1000) {
 			return `$${(num / 1000).toFixed(2)}K`;
 		}
 		return `$${num.toFixed(2)}`;
 	};
 
 	const formatFees = (fees: string, decimals: number) => {
-		const num = Number.parseFloat(fees) / Math.pow(10, decimals);
+		const num = Number.parseFloat(fees) / 10 ** decimals;
 		return num.toFixed(6);
 	};
 
@@ -143,9 +144,13 @@ export function PositionCard({ position }: PositionCardProps) {
 						{getChainName(chainId)} • {feePercentage}% Fee
 					</p>
 				</div>
-				<div className="text-right space-y-1">
-					<p className="font-semibold text-lg">{formatUSD(totalLiquidityUsd)}</p>
-					<p className="text-green-600 text-sm font-medium">{totalApr.toFixed(2)}% APR</p>
+				<div className="space-y-1 text-right">
+					<p className="font-semibold text-lg">
+						{formatUSD(totalLiquidityUsd)}
+					</p>
+					<p className="font-medium text-green-600 text-sm">
+						{totalApr.toFixed(2)}% APR
+					</p>
 				</div>
 			</div>
 
@@ -174,13 +179,16 @@ export function PositionCard({ position }: PositionCardProps) {
 					</div>
 					<div>
 						<span className="text-muted-foreground">Pool ID</span>
-						<p className="font-mono text-xs">{formatAddress(position.poolId)}</p>
+						<p className="font-mono text-xs">
+							{formatAddress(position.poolId)}
+						</p>
 					</div>
 					<div>
 						<span className="text-muted-foreground">Hooks</span>
 						<p className="font-mono text-xs">
-							{hooks.length > 0 && hooks[0] !== "0x0000000000000000000000000000000000000000"
-								? hooks.map(h => formatAddress(h)).join(", ")
+							{hooks.length > 0 &&
+							hooks[0] !== "0x0000000000000000000000000000000000000000"
+								? hooks.map((h) => formatAddress(h)).join(", ")
 								: "None"}
 						</p>
 					</div>
@@ -188,17 +196,22 @@ export function PositionCard({ position }: PositionCardProps) {
 			</div>
 
 			{/* Uncollected Fees */}
-			{(Number.parseFloat(token0UncollectedFees) > 0 || Number.parseFloat(token1UncollectedFees) > 0) && (
+			{(Number.parseFloat(token0UncollectedFees) > 0 ||
+				Number.parseFloat(token1UncollectedFees) > 0) && (
 				<div className="border-t pt-3">
-					<h4 className="text-sm font-medium mb-2">Uncollected Fees</h4>
+					<h4 className="mb-2 font-medium text-sm">Uncollected Fees</h4>
 					<div className="grid grid-cols-2 gap-4 text-sm">
 						<div>
 							<span className="text-muted-foreground">{token0.symbol}</span>
-							<p className="font-mono">{formatFees(token0UncollectedFees, token0.decimals)}</p>
+							<p className="font-mono">
+								{formatFees(token0UncollectedFees, token0.decimals)}
+							</p>
 						</div>
 						<div>
 							<span className="text-muted-foreground">{token1.symbol}</span>
-							<p className="font-mono">{formatFees(token1UncollectedFees, token1.decimals)}</p>
+							<p className="font-mono">
+								{formatFees(token1UncollectedFees, token1.decimals)}
+							</p>
 						</div>
 					</div>
 				</div>
@@ -207,8 +220,12 @@ export function PositionCard({ position }: PositionCardProps) {
 			{/* Footer */}
 			<div className="border-t pt-2">
 				<div className="flex items-center justify-between text-muted-foreground text-xs">
-					<span>{token0.name} ({formatAddress(token0.address)})</span>
-					<span>{token1.name} ({formatAddress(token1.address)})</span>
+					<span>
+						{token0.name} ({formatAddress(token0.address)})
+					</span>
+					<span>
+						{token1.name} ({formatAddress(token1.address)})
+					</span>
 				</div>
 			</div>
 		</Card>

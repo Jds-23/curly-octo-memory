@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { PortoAuth } from "@/components/porto-auth";
 import { CurrenciesDemo } from "@/components/currencies-demo";
+import { PortoAuth } from "@/components/porto-auth";
 import { trpc } from "@/utils/trpc";
 
 export const Route = createFileRoute("/")({

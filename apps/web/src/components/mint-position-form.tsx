@@ -1,14 +1,25 @@
-import { useState } from "react";
-import { useAccount, useChainId } from "wagmi";
 import { useMutation } from "@tanstack/react-query";
+import { Token as UniswapToken } from "@uniswap/sdk-core";
+import {
+	AlertCircle,
+	ArrowRight,
+	Calculator,
+	Plus,
+	Settings,
+} from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { ArrowRight, Plus, Settings, AlertCircle } from "lucide-react";
+import { useAccount, useChainId } from "wagmi";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Badge } from "@/components/ui/badge";
+import {
+	calculateDependentAmount,
+	getCurrentPriceRatio,
+} from "@/utils/amount-calculator";
 import { trpcClient } from "@/utils/trpc";
 
 interface Token {
@@ -25,11 +36,12 @@ interface MintPositionFormProps {
 
 // Common tokens for different chains
 const COMMON_TOKENS: { [chainId: number]: Token[] } = {
-	1: [ // Mainnet
+	1: [
+		// Mainnet
 		{
-			address: "0x0000000000000000000000000000000000000000",
-			symbol: "ETH",
-			name: "Ether",
+			address: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+			symbol: "WETH",
+			name: "Wrapped Ether",
 			decimals: 18,
 			chainId: 1,
 		},
@@ -48,11 +60,12 @@ const COMMON_TOKENS: { [chainId: number]: Token[] } = {
 			chainId: 1,
 		},
 	],
-	130: [ // Unichain
+	130: [
+		// Unichain
 		{
-			address: "0x0000000000000000000000000000000000000000",
-			symbol: "ETH",
-			name: "Ether",
+			address: "0x4200000000000000000000000000000000000006",
+			symbol: "WETH",
+			name: "Wrapped Ether",
 			decimals: 18,
 			chainId: 130,
 		},
@@ -80,8 +93,107 @@ export function MintPositionForm({ onSuccess }: MintPositionFormProps) {
 	const [tickRange, setTickRange] = useState("500"); // Default range
 	const [slippageTolerance, setSlippageTolerance] = useState("0.5");
 
+	// Auto-calculation state
+	const [isCalculating, setIsCalculating] = useState(false);
+	const [autoCalculateEnabled, setAutoCalculateEnabled] = useState(true);
+	const [currentPrice, setCurrentPrice] = useState<number | null>(null);
+	const [lastInputField, setLastInputField] = useState<"A" | "B" | null>(null);
+
 	// Available tokens for current chain
 	const availableTokens = COMMON_TOKENS[chainId] || [];
+
+	// Convert our Token interface to Uniswap Token
+	const convertToUniswapToken = useCallback((token: Token): UniswapToken => {
+		return new UniswapToken(
+			token.chainId,
+			token.address,
+			token.decimals,
+			token.symbol,
+			token.name,
+		);
+	}, []);
+
+	// Auto-calculate dependent amount
+	const calculateOtherAmount = useCallback(
+		async (inputAmount: string, isTokenAInput: boolean) => {
+			console.log('calculateOtherAmount called:', { inputAmount, isTokenAInput, autoCalculateEnabled, tokenA: tokenA?.symbol, tokenB: tokenB?.symbol });
+			if (
+				!autoCalculateEnabled ||
+				!tokenA ||
+				!tokenB ||
+				!inputAmount ||
+				Number.parseFloat(inputAmount) <= 0
+			) {
+				console.log('Early return from calculateOtherAmount:', { autoCalculateEnabled, hasTokenA: !!tokenA, hasTokenB: !!tokenB, inputAmount });
+				return;
+			}
+
+			setIsCalculating(true);
+			try {
+				const uniswapTokenA = convertToUniswapToken(tokenA);
+				const uniswapTokenB = convertToUniswapToken(tokenB);
+
+				const result = await calculateDependentAmount({
+					tokenA: uniswapTokenA,
+					tokenB: uniswapTokenB,
+					feeTier,
+					inputAmount: Number.parseFloat(inputAmount),
+					isTokenAInput,
+					fullRange,
+					tickRange: Number.parseInt(tickRange) || 500,
+				});
+
+				if (result.isValid) {
+					if (isTokenAInput) {
+						setAmountB(result.amountB.toString());
+					} else {
+						setAmountA(result.amountA.toString());
+					}
+				} else if (result.error) {
+					console.warn("Amount calculation:", result.error);
+				}
+			} catch (error) {
+				console.error("Error in auto-calculation:", error);
+			} finally {
+				setIsCalculating(false);
+			}
+		},
+		[
+			autoCalculateEnabled,
+			tokenA,
+			tokenB,
+			feeTier,
+			fullRange,
+			tickRange,
+			convertToUniswapToken,
+		],
+	);
+
+	// Fetch current price when tokens or fee tier change
+	useEffect(() => {
+		const fetchPrice = async () => {
+			if (!tokenA || !tokenB) {
+				setCurrentPrice(null);
+				return;
+			}
+
+			try {
+				const uniswapTokenA = convertToUniswapToken(tokenA);
+				const uniswapTokenB = convertToUniswapToken(tokenB);
+				const price = await getCurrentPriceRatio(
+					uniswapTokenA,
+					uniswapTokenB,
+					feeTier,
+				);
+				setCurrentPrice(price);
+			} catch (error) {
+				console.error("Error fetching current price:", error);
+				setCurrentPrice(null);
+			}
+		};
+
+		fetchPrice();
+	}, [tokenA, tokenB, feeTier, convertToUniswapToken]);
 
 	// tRPC mutation for minting position
 	const mintPositionMutation = useMutation({
@@ -98,9 +210,15 @@ export function MintPositionForm({ onSuccess }: MintPositionFormProps) {
 		}) => {
 			return trpcClient.uniswap.mintPosition.mutate(params);
 		},
-		onSuccess: (data: { success: boolean; tokenId: string | null; message: string }) => {
+		onSuccess: (data: {
+			success: boolean;
+			tokenId: string | null;
+			message: string;
+		}) => {
 			if (data.success && data.tokenId) {
-				toast.success(`Position minted successfully! Token ID: ${data.tokenId}`);
+				toast.success(
+					`Position minted successfully! Token ID: ${data.tokenId}`,
+				);
 				onSuccess?.(data.tokenId);
 				// Reset form
 				setTokenA(null);
@@ -123,14 +241,50 @@ export function MintPositionForm({ onSuccess }: MintPositionFormProps) {
 				return;
 			}
 			setTokenA(token);
+			// Trigger recalculation if we have an amount for the other token
+			if (amountB && lastInputField === "B") {
+				setTimeout(() => calculateOtherAmount(amountB, false), 100);
+			}
 		} else {
 			if (tokenA && token.address === tokenA.address) {
 				toast.error("Cannot select the same token for both positions");
 				return;
 			}
 			setTokenB(token);
+			// Trigger recalculation if we have an amount for the other token
+			if (amountA && lastInputField === "A") {
+				setTimeout(() => calculateOtherAmount(amountA, true), 100);
+			}
 		}
 	};
+
+	const handleAmountAChange = useCallback(
+		(value: string) => {
+			console.log('handleAmountAChange called with:', value);
+			setAmountA(value);
+			setLastInputField("A");
+			if (value && Number.parseFloat(value) > 0) {
+				console.log('Triggering auto-calculation for tokenA input');
+				calculateOtherAmount(value, true);
+			} else {
+				setAmountB("");
+			}
+		},
+		[calculateOtherAmount],
+	);
+
+	const handleAmountBChange = useCallback(
+		(value: string) => {
+			setAmountB(value);
+			setLastInputField("B");
+			if (value && Number.parseFloat(value) > 0) {
+				calculateOtherAmount(value, false);
+			} else {
+				setAmountA("");
+			}
+		},
+		[calculateOtherAmount],
+	);
 
 	const handleSwapTokens = () => {
 		if (tokenA && tokenB) {
@@ -183,7 +337,13 @@ export function MintPositionForm({ onSuccess }: MintPositionFormProps) {
 		}
 	};
 
-	const isFormValid = tokenA && tokenB && amountA && amountB && Number.parseFloat(amountA) > 0 && Number.parseFloat(amountB) > 0;
+	const isFormValid =
+		tokenA &&
+		tokenB &&
+		amountA &&
+		amountB &&
+		Number.parseFloat(amountA) > 0 &&
+		Number.parseFloat(amountB) > 0;
 
 	return (
 		<div className="space-y-6">
@@ -203,7 +363,9 @@ export function MintPositionForm({ onSuccess }: MintPositionFormProps) {
 							{availableTokens.map((token) => (
 								<Button
 									key={token.address}
-									variant={tokenA?.address === token.address ? "default" : "outline"}
+									variant={
+										tokenA?.address === token.address ? "default" : "outline"
+									}
 									size="sm"
 									onClick={() => handleTokenSelect(token, true)}
 								>
@@ -225,7 +387,9 @@ export function MintPositionForm({ onSuccess }: MintPositionFormProps) {
 							{availableTokens.map((token) => (
 								<Button
 									key={token.address}
-									variant={tokenB?.address === token.address ? "default" : "outline"}
+									variant={
+										tokenB?.address === token.address ? "default" : "outline"
+									}
 									size="sm"
 									onClick={() => handleTokenSelect(token, false)}
 									disabled={tokenA?.address === token.address}
@@ -261,7 +425,31 @@ export function MintPositionForm({ onSuccess }: MintPositionFormProps) {
 			{/* Amount Input */}
 			<Card>
 				<CardHeader>
-					<CardTitle>Liquidity Amounts</CardTitle>
+					<CardTitle className="flex items-center justify-between">
+						<span>Liquidity Amounts</span>
+						<div className="flex items-center gap-2">
+							<Checkbox
+								id="autoCalculate"
+								checked={autoCalculateEnabled}
+								onCheckedChange={(checked) =>
+									setAutoCalculateEnabled(checked === true)
+								}
+							/>
+							<Label
+								htmlFor="autoCalculate"
+								className="flex items-center gap-1 font-normal text-sm"
+							>
+								<Calculator className="h-3 w-3" />
+								Auto-calculate
+							</Label>
+						</div>
+					</CardTitle>
+					{currentPrice && tokenA && tokenB && (
+						<div className="text-muted-foreground text-sm">
+							Current price: 1 {tokenA.symbol} = {currentPrice.toFixed(6)}{" "}
+							{tokenB.symbol}
+						</div>
+					)}
 				</CardHeader>
 				<CardContent className="space-y-4">
 					<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -269,31 +457,57 @@ export function MintPositionForm({ onSuccess }: MintPositionFormProps) {
 							<Label htmlFor="amountA">
 								{tokenA ? `${tokenA.symbol} Amount` : "Token A Amount"}
 							</Label>
-							<Input
-								id="amountA"
-								type="number"
-								step="any"
-								placeholder="0.0"
-								value={amountA}
-								onChange={(e) => setAmountA(e.target.value)}
-								disabled={!tokenA}
-							/>
+							<div className="relative">
+								<Input
+									id="amountA"
+									type="number"
+									step="any"
+									placeholder="0.0"
+									value={amountA}
+									onChange={(e) => handleAmountAChange(e.target.value)}
+									disabled={
+										!tokenA || (isCalculating && lastInputField === "B")
+									}
+								/>
+								{isCalculating && lastInputField === "B" && (
+									<div className="-translate-y-1/2 absolute top-1/2 right-2">
+										<div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+									</div>
+								)}
+							</div>
 						</div>
 						<div className="space-y-2">
 							<Label htmlFor="amountB">
 								{tokenB ? `${tokenB.symbol} Amount` : "Token B Amount"}
 							</Label>
-							<Input
-								id="amountB"
-								type="number"
-								step="any"
-								placeholder="0.0"
-								value={amountB}
-								onChange={(e) => setAmountB(e.target.value)}
-								disabled={!tokenB}
-							/>
+							<div className="relative">
+								<Input
+									id="amountB"
+									type="number"
+									step="any"
+									placeholder="0.0"
+									value={amountB}
+									onChange={(e) => handleAmountBChange(e.target.value)}
+									disabled={
+										!tokenB || (isCalculating && lastInputField === "A")
+									}
+								/>
+								{isCalculating && lastInputField === "A" && (
+									<div className="-translate-y-1/2 absolute top-1/2 right-2">
+										<div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+									</div>
+								)}
+							</div>
 						</div>
 					</div>
+					{autoCalculateEnabled && !tokenA && !tokenB && (
+						<div className="rounded-md bg-blue-50 p-3 dark:bg-blue-900/20">
+							<p className="text-blue-800 text-sm dark:text-blue-200">
+								💡 Select both tokens to enable automatic amount calculation
+								based on current pool prices
+							</p>
+						</div>
+					)}
 				</CardContent>
 			</Card>
 
@@ -320,7 +534,21 @@ export function MintPositionForm({ onSuccess }: MintPositionFormProps) {
 									key={tier.value}
 									variant={feeTier === tier.value ? "default" : "outline"}
 									size="sm"
-									onClick={() => setFeeTier(tier.value)}
+									onClick={() => {
+										setFeeTier(tier.value);
+										// Trigger recalculation when fee tier changes
+										if (lastInputField === "A" && amountA) {
+											setTimeout(
+												() => calculateOtherAmount(amountA, true),
+												100,
+											);
+										} else if (lastInputField === "B" && amountB) {
+											setTimeout(
+												() => calculateOtherAmount(amountB, false),
+												100,
+											);
+										}
+									}}
 								>
 									{tier.label}
 								</Button>
@@ -334,23 +562,48 @@ export function MintPositionForm({ onSuccess }: MintPositionFormProps) {
 							<Checkbox
 								id="fullRange"
 								checked={fullRange}
-								onCheckedChange={(checked) => setFullRange(checked === true)}
+								onCheckedChange={(checked) => {
+									setFullRange(checked === true);
+									// Trigger recalculation when range changes
+									if (lastInputField === "A" && amountA) {
+										setTimeout(() => calculateOtherAmount(amountA, true), 100);
+									} else if (lastInputField === "B" && amountB) {
+										setTimeout(() => calculateOtherAmount(amountB, false), 100);
+									}
+								}}
 							/>
 							<Label htmlFor="fullRange">Full Range Position</Label>
 						</div>
 
 						{!fullRange && (
 							<div className="space-y-2">
-								<Label htmlFor="tickRange">Tick Range Around Current Price</Label>
+								<Label htmlFor="tickRange">
+									Tick Range Around Current Price
+								</Label>
 								<Input
 									id="tickRange"
 									type="number"
 									placeholder="500"
 									value={tickRange}
-									onChange={(e) => setTickRange(e.target.value)}
+									onChange={(e) => {
+										setTickRange(e.target.value);
+										// Trigger recalculation when tick range changes
+										if (lastInputField === "A" && amountA) {
+											setTimeout(
+												() => calculateOtherAmount(amountA, true),
+												100,
+											);
+										} else if (lastInputField === "B" && amountB) {
+											setTimeout(
+												() => calculateOtherAmount(amountB, false),
+												100,
+											);
+										}
+									}}
 								/>
 								<p className="text-muted-foreground text-sm">
-									Position will be active within ±{tickRange} ticks from current price
+									Position will be active within ±{tickRange} ticks from current
+									price
 								</p>
 							</div>
 						)}
@@ -363,7 +616,9 @@ export function MintPositionForm({ onSuccess }: MintPositionFormProps) {
 										Full Range Position
 									</p>
 									<p className="text-yellow-700 dark:text-yellow-300">
-										Your liquidity will be active across the entire price range. This provides maximum liquidity but may result in impermanent loss.
+										Your liquidity will be active across the entire price range.
+										This provides maximum liquidity but may result in
+										impermanent loss.
 									</p>
 								</div>
 							</div>
@@ -403,7 +658,9 @@ export function MintPositionForm({ onSuccess }: MintPositionFormProps) {
 							</div>
 							<div className="flex justify-between">
 								<span className="text-muted-foreground">Fee Tier:</span>
-								<Badge variant="secondary">{(feeTier / 10000).toFixed(2)}%</Badge>
+								<Badge variant="secondary">
+									{(feeTier / 10000).toFixed(2)}%
+								</Badge>
 							</div>
 							<div className="flex justify-between">
 								<span className="text-muted-foreground">Range:</span>
@@ -431,11 +688,9 @@ export function MintPositionForm({ onSuccess }: MintPositionFormProps) {
 				className="w-full"
 				size="lg"
 			>
-				{mintPositionMutation.isPending ? (
-					"Minting Position..."
-				) : (
-					"Mint Position"
-				)}
+				{mintPositionMutation.isPending
+					? "Minting Position..."
+					: "Mint Position"}
 			</Button>
 		</div>
 	);
