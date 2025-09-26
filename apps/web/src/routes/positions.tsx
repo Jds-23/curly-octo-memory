@@ -9,6 +9,48 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { WalletGuard } from "@/components/wallet-guard";
 import { trpc } from "@/utils/trpc";
 
+// Explicitly define the enhanced position type to match the API response
+interface EnhancedPositionData {
+	tokenId: string;
+	chainId: number;
+	protocolVersion: string;
+	status: string;
+	timestamp: number;
+	tickLower: number;
+	tickUpper: number;
+	liquidity: string;
+	token0: {
+		chainId: number;
+		address: string;
+		symbol: string;
+		decimals: number;
+		name: string;
+		isNative?: boolean;
+	};
+	token1: {
+		chainId: number;
+		address: string;
+		symbol: string;
+		decimals: number;
+		name: string;
+		isNative?: boolean;
+	};
+	feeTier: number;
+	currentTick: number;
+	currentPrice: string;
+	tickSpacing: number;
+	token0UncollectedFees: string;
+	token1UncollectedFees: string;
+	amount0: string;
+	amount1: string;
+	poolId: string;
+	totalLiquidityUsd: string;
+	currentLiquidity: string;
+	apr: number;
+	totalApr: number;
+	hooks: string[];
+}
+
 export const Route = createFileRoute("/positions")({
 	component: PositionsComponent,
 });
@@ -33,8 +75,6 @@ function PositionsContent() {
 	} = useQuery(
 		trpc.uniswap.getPositions.queryOptions({
 			owner: address!,
-			// You can add graphApiKey here if available
-			// graphApiKey: process.env.VITE_GRAPH_API_KEY,
 		}),
 	);
 
@@ -85,7 +125,7 @@ function PositionsContent() {
 		);
 	}
 
-	const positions = positionsData?.positions || [];
+	const positions = (positionsData?.positions || []) as unknown as EnhancedPositionData[];
 	const hasPositions = positions.length > 0;
 
 	return (

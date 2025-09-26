@@ -1,155 +1,90 @@
-import request from "graphql-request";
-import { type Address, createPublicClient, http, zeroAddress } from "viem";
-import { unichain } from "viem/chains";
 import { z } from "zod";
 import { publicProcedure, router } from "../lib/trpc";
 
-const POSITION_MANAGER_ADDRESS = "0x4529a01c7a0410167c5740c487a8de60232617bf"; // unichain
-const UNICHAIN_SUBGRAPH_URL =
-	"https://gateway.thegraph.com/api/subgraphs/id/EoCvJ5tyMLMJcTnLQwWpjAtPdn74PcrZgzfcT5bYxNBH";
+const UNISWAP_INTERFACE_API_URL = "https://interface.gateway.uniswap.org/v2/pools.v1.PoolsService/ListPositions";
 
-// Create public client for blockchain interactions
-const publicClient = createPublicClient({
-	chain: unichain,
-	transport: http(),
-});
+// Types and interfaces based on Uniswap Interface API
+interface Token {
+	chainId: number;
+	address: string;
+	symbol: string;
+	decimals: number;
+	name: string;
+	isNative?: boolean;
+}
 
-// Types and interfaces
-interface SubgraphPosition {
-	id: string;
+interface PoolPosition {
 	tokenId: string;
-	owner: string;
+	tickLower: string;
+	tickUpper: string;
+	liquidity: string;
+	token0: Token;
+	token1: Token;
+	feeTier: string;
+	currentTick: string;
+	currentPrice: string;
+	tickSpacing: string;
+	token0UncollectedFees: string;
+	token1UncollectedFees: string;
+	amount0: string;
+	amount1: string;
+	poolId: string;
+	totalLiquidityUsd: string;
+	currentLiquidity: string;
+	apr: number;
+	totalApr: number;
 }
 
-interface PackedPositionInfo {
-	getTickUpper(): number;
-	getTickLower(): number;
-	hasSubscriber(): boolean;
+interface V4Position {
+	poolPosition: PoolPosition;
+	hooks: Array<{
+		address: string;
+	}>;
 }
 
-interface PositionDetails {
-	tokenId: bigint;
-	tickLower: number;
-	tickUpper: number;
-	liquidity: bigint;
-	poolKey: {
-		currency0: Address;
-		currency1: Address;
-		fee: number;
-		tickSpacing: number;
-		hooks: Address;
-	};
+interface Position {
+	chainId: number;
+	protocolVersion: string;
+	v4Position?: V4Position;
+	v3Position?: PoolPosition;
+	v2Position?: any; // V2 positions have different structure
+	status: string;
+	timestamp: number;
 }
 
-// GraphQL query for fetching positions
-const GET_POSITIONS_QUERY = `
-	query GetPositions($owner: String!) {
-		positions(where: { owner: $owner }) {
-			tokenId
-			owner
-			id
-		}
+interface ListPositionsResponse {
+	positions: Position[];
+}
+
+// Helper function to call Uniswap Interface API
+async function fetchPositionsFromUniswap(address: string): Promise<ListPositionsResponse> {
+	const response = await fetch(UNISWAP_INTERFACE_API_URL, {
+		method: "POST",
+		headers: {
+			"accept": "*/*",
+			"accept-language": "en-US,en;q=0.9",
+			"connect-protocol-version": "1",
+			"content-type": "application/json",
+			"origin": "https://app.uniswap.org",
+			"referer": "https://app.uniswap.org/",
+			"user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
+		},
+		body: JSON.stringify({
+			address: address,
+			chainIds: [1, 130, 8453, 42161, 137, 10, 56, 43114, 480, 324, 1868, 7777777, 42220, 81457], // All supported chains
+			protocolVersions: ["PROTOCOL_VERSION_V4", "PROTOCOL_VERSION_V3", "PROTOCOL_VERSION_V2"],
+			positionStatuses: ["POSITION_STATUS_IN_RANGE", "POSITION_STATUS_OUT_OF_RANGE"],
+			pageSize: 100, // Fetch more positions
+			pageToken: "",
+			includeHidden: true,
+		}),
+	});
+
+	if (!response.ok) {
+		throw new Error(`Uniswap API error: ${response.status} ${response.statusText}`);
 	}
-`;
 
-// Contract ABI for Position Manager
-const POSITION_MANAGER_ABI = [
-	{
-		name: "getPoolAndPositionInfo",
-		type: "function",
-		inputs: [{ name: "tokenId", type: "uint256" }],
-		outputs: [
-			{
-				name: "poolKey",
-				type: "tuple",
-				components: [
-					{ name: "currency0", type: "address" },
-					{ name: "currency1", type: "address" },
-					{ name: "fee", type: "uint24" },
-					{ name: "tickSpacing", type: "int24" },
-					{ name: "hooks", type: "address" },
-				],
-			},
-			{ name: "info", type: "uint256" },
-		],
-	},
-	{
-		name: "getPositionLiquidity",
-		type: "function",
-		inputs: [{ name: "tokenId", type: "uint256" }],
-		outputs: [{ name: "liquidity", type: "uint128" }],
-	},
-] as const;
-
-// Helper functions
-function decodePositionInfo(value: bigint): PackedPositionInfo {
-	return {
-		getTickUpper: () => {
-			const raw = Number((value >> 32n) & 0xffffffn);
-			return raw >= 0x800000 ? raw - 0x1000000 : raw;
-		},
-		getTickLower: () => {
-			const raw = Number((value >> 8n) & 0xffffffn);
-			return raw >= 0x800000 ? raw - 0x1000000 : raw;
-		},
-		hasSubscriber: () => (value & 0xffn) !== 0n,
-	};
-}
-
-async function getPositionIds(
-	owner: Address,
-	graphApiKey?: string,
-): Promise<bigint[]> {
-	const headers = graphApiKey
-		? { Authorization: `Bearer ${graphApiKey}` }
-		: undefined;
-
-	const response = await request<{ positions: SubgraphPosition[] }>(
-		UNICHAIN_SUBGRAPH_URL,
-		GET_POSITIONS_QUERY,
-		{ owner: owner.toLowerCase() },
-		headers,
-	);
-
-	return response.positions.map((p) => BigInt(p.tokenId));
-}
-
-async function getPositionDetails(tokenId: bigint): Promise<PositionDetails> {
-	// Get pool key and packed position info
-	const [poolKey, infoValue] = (await publicClient.readContract({
-		address: POSITION_MANAGER_ADDRESS,
-		abi: POSITION_MANAGER_ABI,
-		functionName: "getPoolAndPositionInfo",
-		args: [tokenId],
-	})) as readonly [
-		{
-			currency0: Address;
-			currency1: Address;
-			fee: number;
-			tickSpacing: number;
-			hooks: Address;
-		},
-		bigint,
-	];
-
-	// Get current liquidity
-	const liquidity = (await publicClient.readContract({
-		address: POSITION_MANAGER_ADDRESS,
-		abi: POSITION_MANAGER_ABI,
-		functionName: "getPositionLiquidity",
-		args: [tokenId],
-	})) as bigint;
-
-	// Decode packed position info
-	const positionInfo = decodePositionInfo(infoValue);
-
-	return {
-		tokenId,
-		tickLower: positionInfo.getTickLower(),
-		tickUpper: positionInfo.getTickUpper(),
-		liquidity,
-		poolKey,
-	};
+	return response.json() as Promise<ListPositionsResponse>;
 }
 
 // tRPC router
@@ -160,17 +95,16 @@ export const uniswapRouter = router({
 				owner: z
 					.string()
 					.regex(/^0x[a-fA-F0-9]{40}$/, "Invalid Ethereum address"),
-				graphApiKey: z.string().optional(),
 			}),
 		)
 		.query(async ({ input }) => {
 			try {
-				const { owner, graphApiKey } = input;
+				const { owner } = input;
 
-				// Get position IDs from subgraph
-				const tokenIds = await getPositionIds(owner as Address, graphApiKey);
+				// Fetch positions from Uniswap Interface API
+				const response = await fetchPositionsFromUniswap(owner);
 
-				if (tokenIds.length === 0) {
+				if (!response.positions || response.positions.length === 0) {
 					return {
 						success: true,
 						positions: [],
@@ -178,41 +112,56 @@ export const uniswapRouter = router({
 					};
 				}
 
-				// Fetch details for each position
-				const positions = await Promise.all(
-					tokenIds.map(async (tokenId) => {
-						try {
-							const details = await getPositionDetails(tokenId);
-							return {
-								tokenId: details.tokenId.toString(),
-								tickLower: details.tickLower,
-								tickUpper: details.tickUpper,
-								liquidity: details.liquidity.toString(),
-								poolKey: {
-									currency0: details.poolKey.currency0,
-									currency1: details.poolKey.currency1,
-									fee: details.poolKey.fee,
-									tickSpacing: details.poolKey.tickSpacing,
-									hooks: details.poolKey.hooks,
-								},
-							};
-						} catch (error) {
-							console.error(
-								`Error fetching details for position ${tokenId}:`,
-								error,
-							);
-							return null;
-						}
-					}),
-				);
+				// Transform positions to a consistent format
+				const transformedPositions = response.positions.map((position) => {
+					// Get pool position data based on protocol version
+					let poolPosition: PoolPosition | undefined;
+					let hooks: string[] = [];
 
-				// Filter out failed positions
-				const validPositions = positions.filter((p) => p !== null);
+					if (position.v4Position) {
+						poolPosition = position.v4Position.poolPosition;
+						hooks = position.v4Position.hooks.map(h => h.address);
+					} else if (position.v3Position) {
+						poolPosition = position.v3Position;
+					} else if (position.v2Position) {
+						// V2 positions have different structure, handle separately if needed
+						return null;
+					}
+
+					if (!poolPosition) return null;
+
+					return {
+						tokenId: poolPosition.tokenId,
+						chainId: position.chainId,
+						protocolVersion: position.protocolVersion,
+						status: position.status,
+						timestamp: position.timestamp,
+						tickLower: Number.parseInt(poolPosition.tickLower),
+						tickUpper: Number.parseInt(poolPosition.tickUpper),
+						liquidity: poolPosition.liquidity,
+						token0: poolPosition.token0,
+						token1: poolPosition.token1,
+						feeTier: Number.parseInt(poolPosition.feeTier),
+						currentTick: Number.parseInt(poolPosition.currentTick),
+						currentPrice: poolPosition.currentPrice,
+						tickSpacing: Number.parseInt(poolPosition.tickSpacing),
+						token0UncollectedFees: poolPosition.token0UncollectedFees,
+						token1UncollectedFees: poolPosition.token1UncollectedFees,
+						amount0: poolPosition.amount0,
+						amount1: poolPosition.amount1,
+						poolId: poolPosition.poolId,
+						totalLiquidityUsd: poolPosition.totalLiquidityUsd,
+						currentLiquidity: poolPosition.currentLiquidity,
+						apr: poolPosition.apr,
+						totalApr: poolPosition.totalApr,
+						hooks: hooks,
+					};
+				}).filter(Boolean); // Remove null values
 
 				return {
 					success: true,
-					positions: validPositions,
-					message: `Found ${validPositions.length} positions`,
+					positions: transformedPositions,
+					message: `Found ${transformedPositions.length} positions`,
 				};
 			} catch (error) {
 				console.error("Error fetching positions:", error);
@@ -227,29 +176,80 @@ export const uniswapRouter = router({
 	getPositionDetails: publicProcedure
 		.input(
 			z.object({
+				owner: z
+					.string()
+					.regex(/^0x[a-fA-F0-9]{40}$/, "Invalid Ethereum address"),
 				tokenId: z.string().regex(/^\d+$/, "Token ID must be a numeric string"),
 			}),
 		)
 		.query(async ({ input }) => {
 			try {
-				const tokenId = BigInt(input.tokenId);
-				const details = await getPositionDetails(tokenId);
+				const { owner, tokenId } = input;
+
+				// Fetch all positions and find the specific one
+				const response = await fetchPositionsFromUniswap(owner);
+				const position = response.positions.find((p) => {
+					const poolPos = p.v4Position?.poolPosition || p.v3Position;
+					return poolPos?.tokenId === tokenId;
+				});
+
+				if (!position) {
+					return {
+						success: false,
+						position: null,
+						message: "Position not found",
+					};
+				}
+
+				// Transform the position data
+				let poolPosition: PoolPosition | undefined;
+				let hooks: string[] = [];
+
+				if (position.v4Position) {
+					poolPosition = position.v4Position.poolPosition;
+					hooks = position.v4Position.hooks.map(h => h.address);
+				} else if (position.v3Position) {
+					poolPosition = position.v3Position;
+				}
+
+				if (!poolPosition) {
+					return {
+						success: false,
+						position: null,
+						message: "Unsupported position type",
+					};
+				}
+
+				const transformedPosition = {
+					tokenId: poolPosition.tokenId,
+					chainId: position.chainId,
+					protocolVersion: position.protocolVersion,
+					status: position.status,
+					timestamp: position.timestamp,
+					tickLower: Number.parseInt(poolPosition.tickLower),
+					tickUpper: Number.parseInt(poolPosition.tickUpper),
+					liquidity: poolPosition.liquidity,
+					token0: poolPosition.token0,
+					token1: poolPosition.token1,
+					feeTier: Number.parseInt(poolPosition.feeTier),
+					currentTick: Number.parseInt(poolPosition.currentTick),
+					currentPrice: poolPosition.currentPrice,
+					tickSpacing: Number.parseInt(poolPosition.tickSpacing),
+					token0UncollectedFees: poolPosition.token0UncollectedFees,
+					token1UncollectedFees: poolPosition.token1UncollectedFees,
+					amount0: poolPosition.amount0,
+					amount1: poolPosition.amount1,
+					poolId: poolPosition.poolId,
+					totalLiquidityUsd: poolPosition.totalLiquidityUsd,
+					currentLiquidity: poolPosition.currentLiquidity,
+					apr: poolPosition.apr,
+					totalApr: poolPosition.totalApr,
+					hooks: hooks,
+				};
 
 				return {
 					success: true,
-					position: {
-						tokenId: details.tokenId.toString(),
-						tickLower: details.tickLower,
-						tickUpper: details.tickUpper,
-						liquidity: details.liquidity.toString(),
-						poolKey: {
-							currency0: details.poolKey.currency0,
-							currency1: details.poolKey.currency1,
-							fee: details.poolKey.fee,
-							tickSpacing: details.poolKey.tickSpacing,
-							hooks: details.poolKey.hooks,
-						},
-					},
+					position: transformedPosition,
 				};
 			} catch (error) {
 				console.error("Error fetching position details:", error);
