@@ -1,11 +1,12 @@
-import { createPublicClient, http, type Address, zeroAddress } from "viem";
-import { unichain } from "viem/chains";
 import request from "graphql-request";
+import { type Address, createPublicClient, http, zeroAddress } from "viem";
+import { unichain } from "viem/chains";
 import { z } from "zod";
 import { publicProcedure, router } from "../lib/trpc";
 
 const POSITION_MANAGER_ADDRESS = "0x4529a01c7a0410167c5740c487a8de60232617bf"; // unichain
-const UNICHAIN_SUBGRAPH_URL = "https://gateway.thegraph.com/api/subgraphs/id/EoCvJ5tyMLMJcTnLQwWpjAtPdn74PcrZgzfcT5bYxNBH";
+const UNICHAIN_SUBGRAPH_URL =
+	"https://gateway.thegraph.com/api/subgraphs/id/EoCvJ5tyMLMJcTnLQwWpjAtPdn74PcrZgzfcT5bYxNBH";
 
 // Create public client for blockchain interactions
 const publicClient = createPublicClient({
@@ -95,14 +96,19 @@ function decodePositionInfo(value: bigint): PackedPositionInfo {
 	};
 }
 
-async function getPositionIds(owner: Address, graphApiKey?: string): Promise<bigint[]> {
-	const headers = graphApiKey ? { Authorization: `Bearer ${graphApiKey}` } : undefined;
+async function getPositionIds(
+	owner: Address,
+	graphApiKey?: string,
+): Promise<bigint[]> {
+	const headers = graphApiKey
+		? { Authorization: `Bearer ${graphApiKey}` }
+		: undefined;
 
 	const response = await request<{ positions: SubgraphPosition[] }>(
 		UNICHAIN_SUBGRAPH_URL,
 		GET_POSITIONS_QUERY,
 		{ owner: owner.toLowerCase() },
-		headers
+		headers,
 	);
 
 	return response.positions.map((p) => BigInt(p.tokenId));
@@ -123,7 +129,7 @@ async function getPositionDetails(tokenId: bigint): Promise<PositionDetails> {
 			tickSpacing: number;
 			hooks: Address;
 		},
-		bigint
+		bigint,
 	];
 
 	// Get current liquidity
@@ -151,9 +157,11 @@ export const uniswapRouter = router({
 	getPositions: publicProcedure
 		.input(
 			z.object({
-				owner: z.string().regex(/^0x[a-fA-F0-9]{40}$/, "Invalid Ethereum address"),
+				owner: z
+					.string()
+					.regex(/^0x[a-fA-F0-9]{40}$/, "Invalid Ethereum address"),
 				graphApiKey: z.string().optional(),
-			})
+			}),
 		)
 		.query(async ({ input }) => {
 			try {
@@ -189,10 +197,13 @@ export const uniswapRouter = router({
 								},
 							};
 						} catch (error) {
-							console.error(`Error fetching details for position ${tokenId}:`, error);
+							console.error(
+								`Error fetching details for position ${tokenId}:`,
+								error,
+							);
 							return null;
 						}
-					})
+					}),
 				);
 
 				// Filter out failed positions
@@ -217,7 +228,7 @@ export const uniswapRouter = router({
 		.input(
 			z.object({
 				tokenId: z.string().regex(/^\d+$/, "Token ID must be a numeric string"),
-			})
+			}),
 		)
 		.query(async ({ input }) => {
 			try {

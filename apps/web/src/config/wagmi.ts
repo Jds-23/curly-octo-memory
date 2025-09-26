@@ -1,7 +1,7 @@
-import { http, createConfig } from 'wagmi'
-import { mainnet, sepolia, baseSepolia } from 'wagmi/chains'
-import { injected, walletConnect } from 'wagmi/connectors'
-import { porto } from 'porto/wagmi'
+import { porto } from "porto/wagmi";
+import { createConfig, http } from "wagmi";
+import { baseSepolia, mainnet, sepolia } from "wagmi/chains";
+import { injected, walletConnect } from "wagmi/connectors";
 
 export const config = createConfig({
 	chains: [mainnet, sepolia, baseSepolia],
@@ -9,7 +9,7 @@ export const config = createConfig({
 		injected(),
 		porto(),
 		walletConnect({
-			projectId: import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || '',
+			projectId: import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || "",
 		}),
 	],
 	transports: {
@@ -17,4 +17,4 @@ export const config = createConfig({
 		[sepolia.id]: http(),
 		[baseSepolia.id]: http(),
 	},
-})
+});

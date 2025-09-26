@@ -1,10 +1,10 @@
 import { env } from "cloudflare:workers";
 import { trpcServer } from "@hono/trpc-server";
-import { createContext } from "./lib/context";
-import { appRouter } from "./routers/index";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
+import { createContext } from "./lib/context";
+import { appRouter } from "./routers/index";
 
 const app = new Hono();
 

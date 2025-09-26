@@ -1,12 +1,11 @@
-import { RouterProvider, createRouter } from "@tanstack/react-router";
-import ReactDOM from "react-dom/client";
-import { WagmiProvider } from 'wagmi';
-import Loader from "./components/loader";
-import { routeTree } from "./routeTree.gen";
-
 import { QueryClientProvider } from "@tanstack/react-query";
+import { createRouter, RouterProvider } from "@tanstack/react-router";
+import ReactDOM from "react-dom/client";
+import { WagmiProvider } from "wagmi";
+import Loader from "./components/loader";
+import { config } from "./config/wagmi";
+import { routeTree } from "./routeTree.gen";
 import { queryClient, trpc } from "./utils/trpc";
-import { config } from './config/wagmi';
 
 const router = createRouter({
 	routeTree,
@@ -16,7 +15,9 @@ const router = createRouter({
 	Wrap: function WrapComponent({ children }: { children: React.ReactNode }) {
 		return (
 			<WagmiProvider config={config}>
-				<QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+				<QueryClientProvider client={queryClient}>
+					{children}
+				</QueryClientProvider>
 			</WagmiProvider>
 		);
 	},

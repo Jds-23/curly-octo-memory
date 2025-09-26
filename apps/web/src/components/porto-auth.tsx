@@ -1,6 +1,6 @@
-import { Button } from '@/components/ui/button';
-import { useAccount, useConnect, useDisconnect } from 'wagmi';
-import { useEffect } from 'react';
+import { useEffect } from "react";
+import { useAccount, useConnect, useDisconnect } from "wagmi";
+import { Button } from "@/components/ui/button";
 
 export function PortoAuth() {
 	const { address, isConnected, chainId } = useAccount();
@@ -9,26 +9,27 @@ export function PortoAuth() {
 
 	// Find Porto connector
 	const portoConnector = connectors.find(
-		connector => connector.name === 'Porto' || connector.id === 'porto'
+		(connector) => connector.name === "Porto" || connector.id === "porto",
 	);
 
 	// Find other connectors
 	const injectedConnector = connectors.find(
-		connector => connector.name === 'Injected' || connector.id === 'injected'
+		(connector) => connector.name === "Injected" || connector.id === "injected",
 	);
 
 	const walletConnectConnector = connectors.find(
-		connector => connector.name === 'WalletConnect' || connector.id === 'walletConnect'
+		(connector) =>
+			connector.name === "WalletConnect" || connector.id === "walletConnect",
 	);
 
 	if (isConnected && address) {
 		return (
-			<div className="rounded-lg border p-4 space-y-4">
+			<div className="space-y-4 rounded-lg border p-4">
 				<h3 className="font-medium">Connected Wallet</h3>
 				<div className="space-y-2">
 					<p className="text-sm">
-						<span className="font-medium">Address:</span>{' '}
-						<code className="bg-muted px-1 py-0.5 rounded text-xs">
+						<span className="font-medium">Address:</span>{" "}
+						<code className="rounded bg-muted px-1 py-0.5 text-xs">
 							{address.slice(0, 6)}...{address.slice(-4)}
 						</code>
 					</p>
@@ -46,7 +47,7 @@ export function PortoAuth() {
 	}
 
 	return (
-		<div className="rounded-lg border p-4 space-y-4">
+		<div className="space-y-4 rounded-lg border p-4">
 			<h3 className="font-medium">Connect Your Wallet</h3>
 			<div className="space-y-2">
 				{/* Porto Sign In Button */}
@@ -54,9 +55,9 @@ export function PortoAuth() {
 					<Button
 						onClick={() => connect({ connector: portoConnector })}
 						disabled={isPending}
-						className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+						className="w-full bg-blue-600 text-white hover:bg-blue-700"
 					>
-						{isPending ? 'Connecting...' : 'Sign in with Porto'}
+						{isPending ? "Connecting..." : "Sign in with Porto"}
 					</Button>
 				)}
 
@@ -68,7 +69,7 @@ export function PortoAuth() {
 						variant="outline"
 						className="w-full"
 					>
-						{isPending ? 'Connecting...' : 'Connect MetaMask'}
+						{isPending ? "Connecting..." : "Connect MetaMask"}
 					</Button>
 				)}
 
@@ -80,15 +81,13 @@ export function PortoAuth() {
 						variant="outline"
 						className="w-full"
 					>
-						{isPending ? 'Connecting...' : 'WalletConnect'}
+						{isPending ? "Connecting..." : "WalletConnect"}
 					</Button>
 				)}
 			</div>
 
 			{error && (
-				<div className="text-sm text-red-500 mt-2">
-					Error: {error.message}
-				</div>
+				<div className="mt-2 text-red-500 text-sm">Error: {error.message}</div>
 			)}
 		</div>
 	);
