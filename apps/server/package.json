@@ -16,14 +16,16 @@
     "cf-typegen": "wrangler types --env-interface CloudflareBindings"
   },
   "dependencies": {
-    "dotenv": "^17.2.1",
-    "zod": "^4.0.2",
-    "@trpc/server": "^11.5.0",
-    "@trpc/client": "^11.5.0",
     "@hono/trpc-server": "^0.4.0",
-    "hono": "^4.8.2",
+    "@libsql/client": "^0.15.9",
+    "@trpc/client": "^11.5.0",
+    "@trpc/server": "^11.5.0",
+    "dotenv": "^17.2.1",
     "drizzle-orm": "^0.44.2",
-    "@libsql/client": "^0.15.9"
+    "graphql-request": "^7.2.0",
+    "hono": "^4.8.2",
+    "viem": "^2.37.8",
+    "zod": "^4.0.2"
   },
   "devDependencies": {
     "tsdown": "^0.15.1",
