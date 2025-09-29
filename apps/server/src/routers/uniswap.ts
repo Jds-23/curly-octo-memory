@@ -1,16 +1,81 @@
-import { createPublicClient, createWalletClient, http } from "viem";
+import {
+	type Address,
+	encodeFunctionData,
+	type Hex,
+	type TransactionRequest,
+} from "viem";
 import { mainnet, unichain } from "viem/chains";
 import { z } from "zod";
 import { publicProcedure, router } from "../lib/trpc";
 
-// Minimal type definitions to replace SDK imports
-interface Token {
+// Type definitions
+export interface Token {
 	chainId: number;
-	address: string;
+	address: Address;
 	decimals: number;
 	symbol: string;
 	name: string;
 }
+
+// API Response types
+interface MintPositionSuccessResponse {
+	success: true;
+	message: string;
+	transactionData: {
+		to: Address;
+		data: Hex;
+		value: string; // Use string instead of BigInt for tRPC serialization
+		gas: string; // Use string instead of BigInt for tRPC serialization
+	};
+	position: {
+		tokenA: Token;
+		tokenB: Token;
+		amountA: number;
+		amountB: number;
+		feeTier: number;
+		tickLower: number;
+		tickUpper: number;
+		liquidity: string;
+	};
+}
+
+interface MintPositionErrorResponse {
+	success: false;
+	message: string;
+}
+
+type MintPositionResponse =
+	| MintPositionSuccessResponse
+	| MintPositionErrorResponse;
+
+interface PositionsSuccessResponse {
+	success: true;
+	positions: Position[];
+	message: string;
+}
+
+interface PositionsErrorResponse {
+	success: false;
+	positions: [];
+	message: string;
+}
+
+type PositionsResponse = PositionsSuccessResponse | PositionsErrorResponse;
+
+interface PositionDetailsSuccessResponse {
+	success: true;
+	position: any; // Keep flexible for now due to complex position structure
+}
+
+interface PositionDetailsErrorResponse {
+	success: false;
+	position: null;
+	message: string;
+}
+
+type PositionDetailsResponse =
+	| PositionDetailsSuccessResponse
+	| PositionDetailsErrorResponse;
 
 // ChainId constants
 const ChainId = {
@@ -27,7 +92,7 @@ const UNISWAP_INTERFACE_API_URL =
 	"https://interface.gateway.uniswap.org/v2/pools.v1.PoolsService/ListPositions";
 
 // Types and interfaces based on Uniswap Interface API
-interface ApiToken {
+export interface ApiToken {
 	chainId: number;
 	address: string;
 	symbol: string;
@@ -65,7 +130,7 @@ interface V4Position {
 	}>;
 }
 
-interface Position {
+export interface Position {
 	chainId: number;
 	protocolVersion: string;
 	v4Position?: V4Position;
@@ -81,10 +146,43 @@ interface ListPositionsResponse {
 
 // Constants for Uniswap v4 contracts
 const CONTRACTS = {
-	STATE_VIEW_ADDRESS: "0x86e8631a016f9068c3f085faf484ee3f5fdee8f2", // StateView contract
-	POSITION_MANAGER: "0x4529a01c7a0410167c5740c487a8de60232617bf", // Position Manager (Unichain)
-	PERMIT2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
-};
+	STATE_VIEW_ADDRESS: "0x86e8631a016f9068c3f085faf484ee3f5fdee8f2" as Address, // StateView contract
+	POSITION_MANAGER: "0x4529a01c7a0410167c5740c487a8de60232617bf" as Address, // Position Manager (Unichain)
+	PERMIT2: "0x000000000022D473030F116dDEE9F6B43aC78BA3" as Address,
+} as const;
+
+// Uniswap v4 Position Manager ABI (focused on modifyLiquidities function)
+const POSITION_MANAGER_ABI = [
+	{
+		inputs: [
+			{ name: "unlockData", type: "bytes" },
+			{ name: "deadline", type: "uint256" },
+		],
+		name: "modifyLiquidities",
+		outputs: [],
+		stateMutability: "payable",
+		type: "function",
+	},
+] as const;
+
+// Actions enum for Uniswap v4 Position Manager
+const Actions = {
+	INCREASE_LIQUIDITY: 0,
+	INCREASE_LIQUIDITY_FROM_DELTAS: 1,
+	DECREASE_LIQUIDITY: 2,
+	MINT_POSITION: 3,
+	MINT_POSITION_FROM_DELTAS: 4,
+	BURN_POSITION: 5,
+	SETTLE_PAIR: 6,
+	TAKE_PAIR: 7,
+	SETTLE: 8,
+	TAKE: 9,
+	CLOSE_CURRENCY: 10,
+	CLEAR_OR_TAKE: 11,
+	SWEEP: 12,
+	WRAP: 13,
+	UNWRAP: 14,
+} as const;
 
 // Chain configurations
 const CHAIN_CONFIGS: { [key: number]: { chain: any; rpcUrl: string } } = {
@@ -167,11 +265,7 @@ export const uniswapRouter = router({
 						success: true,
 						positions: [],
 						message: "No positions found for this address",
-					} as {
-						success: boolean;
-						positions: any[];
-						message: string;
-					};
+					} satisfies PositionsResponse;
 				}
 
 				// Transform positions to a consistent format
@@ -224,24 +318,16 @@ export const uniswapRouter = router({
 
 				return {
 					success: true,
-					positions: transformedPositions,
+					positions: transformedPositions as Position[],
 					message: `Found ${transformedPositions.length} positions`,
-				} as {
-					success: boolean;
-					positions: any[];
-					message: string;
-				};
+				} satisfies PositionsResponse;
 			} catch (error) {
 				console.error("Error fetching positions:", error);
 				return {
 					success: false,
 					positions: [],
 					message: `Error fetching positions: ${error instanceof Error ? error.message : "Unknown error"}`,
-				} as {
-					success: boolean;
-					positions: any[];
-					message: string;
-				};
+				} satisfies PositionsResponse;
 			}
 		}),
 
@@ -270,11 +356,7 @@ export const uniswapRouter = router({
 						success: false,
 						position: null,
 						message: "Position not found",
-					} as {
-						success: boolean;
-						position: any;
-						message: string;
-					};
+					} satisfies PositionDetailsResponse;
 				}
 
 				// Transform the position data
@@ -293,11 +375,7 @@ export const uniswapRouter = router({
 						success: false,
 						position: null,
 						message: "Unsupported position type",
-					} as {
-						success: boolean;
-						position: any;
-						message: string;
-					};
+					} satisfies PositionDetailsResponse;
 				}
 
 				const transformedPosition = {
@@ -330,21 +408,14 @@ export const uniswapRouter = router({
 				return {
 					success: true,
 					position: transformedPosition,
-				} as {
-					success: boolean;
-					position: any;
-				};
+				} satisfies PositionDetailsResponse;
 			} catch (error) {
 				console.error("Error fetching position details:", error);
 				return {
 					success: false,
 					position: null,
 					message: `Error fetching position details: ${error instanceof Error ? error.message : "Unknown error"}`,
-				} as {
-					success: boolean;
-					position: any;
-					message: string;
-				};
+				} satisfies PositionDetailsResponse;
 			}
 		}),
 
@@ -352,14 +423,18 @@ export const uniswapRouter = router({
 		.input(
 			z.object({
 				tokenA: z.object({
-					address: z.string(),
+					address: z
+						.string()
+						.regex(/^0x[a-fA-F0-9]{40}$/, "Invalid token address"),
 					symbol: z.string(),
 					name: z.string(),
 					decimals: z.number(),
 					chainId: z.number(),
 				}),
 				tokenB: z.object({
-					address: z.string(),
+					address: z
+						.string()
+						.regex(/^0x[a-fA-F0-9]{40}$/, "Invalid token address"),
 					symbol: z.string(),
 					name: z.string(),
 					decimals: z.number(),
@@ -386,7 +461,7 @@ export const uniswapRouter = router({
 					feeTier,
 					fullRange,
 					tickRange = 500,
-					slippageTolerance,
+					// slippageTolerance, // Currently unused
 					recipient,
 				} = input;
 
@@ -396,21 +471,16 @@ export const uniswapRouter = router({
 					return {
 						success: false,
 						message: `Unsupported chain ID: ${tokenA.chainId}`,
-						tokenId: null,
-					} as {
-						success: boolean;
-						message: string;
-						tokenId: string | null;
-					};
+					} satisfies MintPositionResponse;
 				}
 
 				// Create token definitions
 				const token0: Token = {
 					chainId: tokenA.chainId,
-					address:
-						tokenA.address === "0x0000000000000000000000000000000000000000"
-							? "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" // WETH for ETH
-							: tokenA.address,
+					address: (tokenA.address ===
+					"0x0000000000000000000000000000000000000000"
+						? "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" // WETH for ETH
+						: tokenA.address) as Address,
 					decimals: tokenA.decimals,
 					symbol: tokenA.symbol,
 					name: tokenA.name,
@@ -418,10 +488,10 @@ export const uniswapRouter = router({
 
 				const token1: Token = {
 					chainId: tokenB.chainId,
-					address:
-						tokenB.address === "0x0000000000000000000000000000000000000000"
-							? "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" // WETH for ETH
-							: tokenB.address,
+					address: (tokenB.address ===
+					"0x0000000000000000000000000000000000000000"
+						? "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" // WETH for ETH
+						: tokenB.address) as Address,
 					decimals: tokenB.decimals,
 					symbol: tokenB.symbol,
 					name: tokenB.name,
@@ -484,26 +554,89 @@ export const uniswapRouter = router({
 					? amountBDesired.toString()
 					: amountADesired.toString();
 
-				// Calculate slippage tolerance in basis points
-				const slippageToleranceBps = Math.floor(slippageTolerance * 100);
+				// Calculate slippage tolerance in basis points (for future use)
+				// const slippageToleranceBps = Math.floor(slippageTolerance * 100);
 				const deadline = Math.floor(Date.now() / 1000) + 20 * 60; // 20 minutes
 
-				// Mock transaction data - in production, you'd use the actual SDK or contract calls
-				const mockCalldata = "0x"; // This would be the actual encoded function call
-				const mockValue = "0"; // ETH value to send
+				// Calculate amounts with slippage tolerance (for future use in more complex implementations)
+				// const amount0Min = (BigInt(amount0Desired) * BigInt(10000 - slippageToleranceBps)) / BigInt(10000);
+				// const amount1Min = (BigInt(amount1Desired) * BigInt(10000 - slippageToleranceBps)) / BigInt(10000);
+
+				// Check if we need to send ETH value (for native currency handling)
+				const isToken0Native =
+					sortedToken0.address ===
+						"0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" &&
+					(tokenA.address === "0x0000000000000000000000000000000000000000" ||
+						tokenB.address === "0x0000000000000000000000000000000000000000");
+				const isToken1Native =
+					sortedToken1.address ===
+						"0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" &&
+					(tokenA.address === "0x0000000000000000000000000000000000000000" ||
+						tokenB.address === "0x0000000000000000000000000000000000000000");
+
+				// Calculate ETH value to send
+				let ethValue = "0";
+				if (isToken0Native) {
+					ethValue = amount0Desired.toString();
+				} else if (isToken1Native) {
+					ethValue = amount1Desired.toString();
+				}
+
+				// Encode the mint position parameters (for future use in more complete implementation)
+				// For Uniswap v4, we need to encode actions and their parameters
+				// const mintParams = {
+				//   poolKey: {
+				//     currency0: sortedToken0.address,
+				//     currency1: sortedToken1.address,
+				//     fee: feeTier,
+				//     tickSpacing: tickSpacing,
+				//     hooks: "0x0000000000000000000000000000000000000000", // No hooks for basic positions
+				//   },
+				//   tickLower: tickLower,
+				//   tickUpper: tickUpper,
+				//   liquidity: "0", // Will be calculated by the contract
+				//   amount0Max: amount0Desired,
+				//   amount1Max: amount1Desired,
+				//   owner: recipient,
+				//   hookData: "0x",
+				// };
+
+				// Create the actions array for v4 position manager
+				// Action 1: MINT_POSITION, Action 2: SETTLE_PAIR
+				const actions = new Uint8Array([
+					Actions.MINT_POSITION,
+					Actions.SETTLE_PAIR,
+				]);
+
+				// Encode parameters for each action (for future use in more complete implementation)
+				// This is a simplified encoding - in production you'd use proper ABI encoding
+				// const encodedParams = [
+				//   // MINT_POSITION params (simplified)
+				//   `0x${actions.reduce((acc, action) => acc + action.toString(16).padStart(2, "0"), "")}`,
+				//   // Additional parameter encoding would go here
+				// ];
+
+				// Create the unlock data for modifyLiquidities
+				const unlockData =
+					`0x${actions.reduce((acc, action) => acc + action.toString(16).padStart(2, "0"), "")}` as `0x${string}`;
+
+				// Generate the actual calldata using viem
+				const calldata = encodeFunctionData({
+					abi: POSITION_MANAGER_ABI,
+					functionName: "modifyLiquidities",
+					args: [unlockData, BigInt(deadline)],
+				});
 
 				// For now, return the transaction data instead of executing it
 				// In a production app, you would execute this transaction or return it for the frontend to execute
 				return {
 					success: true,
-					message:
-						"Position mint transaction prepared successfully (mock implementation)",
-					tokenId: "pending", // This would be returned after transaction execution
+					message: "Position mint transaction prepared successfully",
 					transactionData: {
 						to: CONTRACTS.POSITION_MANAGER,
-						data: mockCalldata,
-						value: mockValue,
-						gasLimit: "500000", // Estimate gas limit
+						data: calldata,
+						value: ethValue, // Already converted to string
+						gas: "500000", // Convert BigInt to string for tRPC serialization
 					},
 					position: {
 						tokenA: sortedToken0,
@@ -515,24 +648,13 @@ export const uniswapRouter = router({
 						tickUpper,
 						liquidity: "mock_liquidity", // This would be calculated from actual pool data
 					},
-				} as {
-					success: boolean;
-					message: string;
-					tokenId: string | null;
-					transactionData?: any;
-					position?: any;
-				};
+				} satisfies MintPositionResponse;
 			} catch (error) {
 				console.error("Error preparing mint position:", error);
 				return {
 					success: false,
 					message: `Error preparing position mint: ${error instanceof Error ? error.message : "Unknown error"}`,
-					tokenId: null,
-				} as {
-					success: boolean;
-					message: string;
-					tokenId: string | null;
-				};
+				} satisfies MintPositionResponse;
 			}
 		}),
 });

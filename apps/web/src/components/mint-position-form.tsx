@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { type Address, type TransactionRequest } from "viem";
 import { useAccount, useChainId } from "wagmi";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,15 +24,39 @@ import {
 import { trpcClient } from "@/utils/trpc";
 
 interface Token {
-	address: string;
+	address: Address;
 	symbol: string;
 	name: string;
 	decimals: number;
 	chainId: number;
 }
 
+// Response types matching the server API (kept for future reference but currently unused since tRPC infers types)
+// interface MintPositionSuccessResponse {
+// 	success: true;
+// 	message: string;
+// 	transactionData: TransactionRequest;
+// 	position: {
+// 		tokenA: Token;
+// 		tokenB: Token;
+// 		amountA: number;
+// 		amountB: number;
+// 		feeTier: number;
+// 		tickLower: number;
+// 		tickUpper: number;
+// 		liquidity: string;
+// 	};
+// }
+
+// interface MintPositionErrorResponse {
+// 	success: false;
+// 	message: string;
+// }
+
+// type MintPositionResponse = MintPositionSuccessResponse | MintPositionErrorResponse;
+
 interface MintPositionFormProps {
-	onSuccess?: (tokenId: string) => void;
+	onSuccess?: (transactionData: TransactionRequest) => void;
 }
 
 // Common tokens for different chains
@@ -39,21 +64,21 @@ const COMMON_TOKENS: { [chainId: number]: Token[] } = {
 	1: [
 		// Mainnet
 		{
-			address: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+			address: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" as Address,
 			symbol: "WETH",
 			name: "Wrapped Ether",
 			decimals: 18,
 			chainId: 1,
 		},
 		{
-			address: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+			address: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48" as Address,
 			symbol: "USDC",
 			name: "USD Coin",
 			decimals: 6,
 			chainId: 1,
 		},
 		{
-			address: "0xdac17f958d2ee523a2206206994597c13d831ec7",
+			address: "0xdac17f958d2ee523a2206206994597c13d831ec7" as Address,
 			symbol: "USDT",
 			name: "Tether USD",
 			decimals: 6,
@@ -63,14 +88,14 @@ const COMMON_TOKENS: { [chainId: number]: Token[] } = {
 	130: [
 		// Unichain
 		{
-			address: "0x4200000000000000000000000000000000000006",
+			address: "0x4200000000000000000000000000000000000006" as Address,
 			symbol: "WETH",
 			name: "Wrapped Ether",
 			decimals: 18,
 			chainId: 130,
 		},
 		{
-			address: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+			address: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913" as Address,
 			symbol: "USDC",
 			name: "USD Coin",
 			decimals: 6,
@@ -116,7 +141,13 @@ export function MintPositionForm({ onSuccess }: MintPositionFormProps) {
 	// Auto-calculate dependent amount
 	const calculateOtherAmount = useCallback(
 		async (inputAmount: string, isTokenAInput: boolean) => {
-			console.log('calculateOtherAmount called:', { inputAmount, isTokenAInput, autoCalculateEnabled, tokenA: tokenA?.symbol, tokenB: tokenB?.symbol });
+			console.log("calculateOtherAmount called:", {
+				inputAmount,
+				isTokenAInput,
+				autoCalculateEnabled,
+				tokenA: tokenA?.symbol,
+				tokenB: tokenB?.symbol,
+			});
 			if (
 				!autoCalculateEnabled ||
 				!tokenA ||
@@ -124,7 +155,12 @@ export function MintPositionForm({ onSuccess }: MintPositionFormProps) {
 				!inputAmount ||
 				Number.parseFloat(inputAmount) <= 0
 			) {
-				console.log('Early return from calculateOtherAmount:', { autoCalculateEnabled, hasTokenA: !!tokenA, hasTokenB: !!tokenB, inputAmount });
+				console.log("Early return from calculateOtherAmount:", {
+					autoCalculateEnabled,
+					hasTokenA: !!tokenA,
+					hasTokenB: !!tokenB,
+					inputAmount,
+				});
 				return;
 			}
 
@@ -210,27 +246,24 @@ export function MintPositionForm({ onSuccess }: MintPositionFormProps) {
 		}) => {
 			return trpcClient.uniswap.mintPosition.mutate(params);
 		},
-		onSuccess: (data: {
-			success: boolean;
-			tokenId: string | null;
-			message: string;
-		}) => {
-			if (data.success && data.tokenId) {
+		onSuccess: (data: any) => {
+			if (data.success && data.transactionData) {
 				toast.success(
-					`Position minted successfully! Token ID: ${data.tokenId}`,
+					`Transaction prepared successfully! Ready to execute on-chain.`,
 				);
-				onSuccess?.(data.tokenId);
+				console.log("Transaction prepared successfully! Ready to execute on-chain.", data.transactionData);
+				// onSuccess?.(data.transactionData);
 				// Reset form
 				setTokenA(null);
 				setTokenB(null);
 				setAmountA("");
 				setAmountB("");
 			} else {
-				toast.error(data.message || "Failed to mint position");
+				toast.error(data.message || "Failed to prepare position mint");
 			}
 		},
 		onError: (error: Error) => {
-			toast.error(`Error minting position: ${error.message}`);
+			toast.error(`Error preparing position mint: ${error.message}`);
 		},
 	});
 
@@ -260,11 +293,11 @@ export function MintPositionForm({ onSuccess }: MintPositionFormProps) {
 
 	const handleAmountAChange = useCallback(
 		(value: string) => {
-			console.log('handleAmountAChange called with:', value);
+			console.log("handleAmountAChange called with:", value);
 			setAmountA(value);
 			setLastInputField("A");
 			if (value && Number.parseFloat(value) > 0) {
-				console.log('Triggering auto-calculation for tokenA input');
+				console.log("Triggering auto-calculation for tokenA input");
 				calculateOtherAmount(value, true);
 			} else {
 				setAmountB("");

@@ -19,7 +19,10 @@
 		"db:generate": "turbo -F server db:generate",
 		"db:migrate": "turbo -F server db:migrate"
 	},
-	"dependencies": {},
+	"dependencies": {
+		"@types/react-window": "^2.0.0",
+		"react-window": "^2.1.1"
+	},
 	"devDependencies": {
 		"turbo": "^2.5.4",
 		"@biomejs/biome": "^2.2.0"

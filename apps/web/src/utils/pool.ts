@@ -88,7 +88,12 @@ export async function fetchPoolData(
 	feeTier: number,
 ): Promise<PoolData | null> {
 	try {
-		console.log(`fetchPoolData called with:`, { tokenA: tokenA.symbol, tokenB: tokenB.symbol, feeTier, chainId: tokenA.chainId });
+		console.log("fetchPoolData called with:", {
+			tokenA: tokenA.symbol,
+			tokenB: tokenB.symbol,
+			feeTier,
+			chainId: tokenA.chainId,
+		});
 		const chainConfig =
 			CHAIN_CONFIGS[tokenA.chainId as keyof typeof CHAIN_CONFIGS];
 		if (!chainConfig) {
@@ -109,11 +114,14 @@ export async function fetchPoolData(
 				: [tokenB, tokenA];
 
 		// Get factory address for this chain
-		const factoryAddress = FACTORY_ADDRESSES[tokenA.chainId as keyof typeof FACTORY_ADDRESSES];
+		const factoryAddress =
+			FACTORY_ADDRESSES[tokenA.chainId as keyof typeof FACTORY_ADDRESSES];
 		if (!factoryAddress) {
-			throw new Error(`No factory address configured for chain ${tokenA.chainId}`);
+			throw new Error(
+				`No factory address configured for chain ${tokenA.chainId}`,
+			);
 		}
-		
+
 		console.log(`Using factory address: ${factoryAddress}`);
 
 		// Get pool address from factory

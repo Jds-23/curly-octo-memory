@@ -9,10 +9,16 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TokenSelectorDemoRouteImport } from './routes/token-selector-demo'
 import { Route as PositionsRouteImport } from './routes/positions'
 import { Route as MintPositionRouteImport } from './routes/mint-position'
 import { Route as IndexRouteImport } from './routes/index'
 
+const TokenSelectorDemoRoute = TokenSelectorDemoRouteImport.update({
+  id: '/token-selector-demo',
+  path: '/token-selector-demo',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PositionsRoute = PositionsRouteImport.update({
   id: '/positions',
   path: '/positions',
@@ -33,34 +39,50 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/mint-position': typeof MintPositionRoute
   '/positions': typeof PositionsRoute
+  '/token-selector-demo': typeof TokenSelectorDemoRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/mint-position': typeof MintPositionRoute
   '/positions': typeof PositionsRoute
+  '/token-selector-demo': typeof TokenSelectorDemoRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/mint-position': typeof MintPositionRoute
   '/positions': typeof PositionsRoute
+  '/token-selector-demo': typeof TokenSelectorDemoRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/mint-position' | '/positions'
+  fullPaths: '/' | '/mint-position' | '/positions' | '/token-selector-demo'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/mint-position' | '/positions'
-  id: '__root__' | '/' | '/mint-position' | '/positions'
+  to: '/' | '/mint-position' | '/positions' | '/token-selector-demo'
+  id:
+    | '__root__'
+    | '/'
+    | '/mint-position'
+    | '/positions'
+    | '/token-selector-demo'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   MintPositionRoute: typeof MintPositionRoute
   PositionsRoute: typeof PositionsRoute
+  TokenSelectorDemoRoute: typeof TokenSelectorDemoRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/token-selector-demo': {
+      id: '/token-selector-demo'
+      path: '/token-selector-demo'
+      fullPath: '/token-selector-demo'
+      preLoaderRoute: typeof TokenSelectorDemoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/positions': {
       id: '/positions'
       path: '/positions'
@@ -89,6 +111,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   MintPositionRoute: MintPositionRoute,
   PositionsRoute: PositionsRoute,
+  TokenSelectorDemoRoute: TokenSelectorDemoRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

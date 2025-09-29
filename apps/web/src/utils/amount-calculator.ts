@@ -46,10 +46,14 @@ export async function calculateDependentAmount(
 		}
 
 		// Fetch pool data
-		console.log(`Fetching pool data for ${tokenA.symbol}/${tokenB.symbol} with fee tier ${feeTier}`);
+		console.log(
+			`Fetching pool data for ${tokenA.symbol}/${tokenB.symbol} with fee tier ${feeTier}`,
+		);
 		const poolData = await fetchPoolData(tokenA, tokenB, feeTier);
 		if (!poolData) {
-			console.warn(`No pool found for ${tokenA.symbol}/${tokenB.symbol} with fee tier ${feeTier}`);
+			console.warn(
+				`No pool found for ${tokenA.symbol}/${tokenB.symbol} with fee tier ${feeTier}`,
+			);
 			return {
 				amountA: isTokenAInput ? inputAmount : 0,
 				amountB: isTokenAInput ? 0 : inputAmount,
@@ -57,7 +61,7 @@ export async function calculateDependentAmount(
 				error: "Pool not found for this token pair and fee tier",
 			};
 		}
-		console.log(`Pool data fetched successfully:`, poolData);
+		console.log("Pool data fetched successfully:", poolData);
 
 		const { pool } = poolData;
 
