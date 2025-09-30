@@ -1,7 +1,8 @@
 import type { Token } from "@uniswap/sdk-core";
 import { type FeeAmount, Pool } from "@uniswap/v3-sdk";
 import { createPublicClient, http } from "viem";
-import { mainnet, unichain } from "viem/chains";
+import { arbitrum, base, mainnet, optimism, polygon } from "viem/chains";
+import { getFactoryAddress } from "@/lib/contracts/uniswap-deployments";
 
 // Pool contract ABI for the slot0 function
 const POOL_ABI = [
@@ -37,11 +38,8 @@ const POOL_ABI = [
 	},
 ] as const;
 
-// Uniswap V3 Factory addresses by chain
-const FACTORY_ADDRESSES = {
-	1: "0x1F98431c8aD98523631AE4a59f267346ea31F984", // Mainnet
-	130: "0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865", // Unichain Sepolia
-} as const;
+// Factory addresses are now managed by the deployment configuration
+// This legacy object is kept for reference but should use getFactoryAddress() instead
 
 // Factory ABI for getPool function
 const FACTORY_ABI = [
@@ -58,17 +56,32 @@ const FACTORY_ABI = [
 	},
 ] as const;
 
-// Chain configurations
+// Chain configurations for supported mainnet chains
 const CHAIN_CONFIGS = {
 	1: {
-		// Mainnet
+		// Ethereum Mainnet
 		chain: mainnet,
-		rpcUrl: "https://ethereum-rpc.publicnode.com", // Public endpoint that's known to work
+		rpcUrl: "https://ethereum-rpc.publicnode.com",
 	},
-	130: {
-		// Unichain
-		chain: unichain,
-		rpcUrl: "https://sepolia.unichain.org", // Public Unichain Sepolia endpoint
+	137: {
+		// Polygon Mainnet
+		chain: polygon,
+		rpcUrl: "https://polygon-rpc.com",
+	},
+	10: {
+		// Optimism Mainnet
+		chain: optimism,
+		rpcUrl: "https://mainnet.optimism.io",
+	},
+	8453: {
+		// Base Mainnet
+		chain: base,
+		rpcUrl: "https://mainnet.base.org",
+	},
+	42161: {
+		// Arbitrum One
+		chain: arbitrum,
+		rpcUrl: "https://arb1.arbitrum.io/rpc",
 	},
 } as const;
 
@@ -114,11 +127,10 @@ export async function fetchPoolData(
 				: [tokenB, tokenA];
 
 		// Get factory address for this chain
-		const factoryAddress =
-			FACTORY_ADDRESSES[tokenA.chainId as keyof typeof FACTORY_ADDRESSES];
+		const factoryAddress = getFactoryAddress(tokenA.chainId);
 		if (!factoryAddress) {
 			throw new Error(
-				`No factory address configured for chain ${tokenA.chainId}`,
+				`No Uniswap V3 factory deployed on chain ${tokenA.chainId}`,
 			);
 		}
 

@@ -4,7 +4,7 @@ import {
 	type Hex,
 	type TransactionRequest,
 } from "viem";
-import { mainnet, unichain } from "viem/chains";
+import { arbitrum, base, mainnet, optimism, polygon } from "viem/chains";
 import { z } from "zod";
 import { publicProcedure, router } from "../lib/trpc";
 
@@ -77,10 +77,13 @@ type PositionDetailsResponse =
 	| PositionDetailsSuccessResponse
 	| PositionDetailsErrorResponse;
 
-// ChainId constants
+// ChainId constants for supported mainnet chains
 const ChainId = {
 	MAINNET: 1,
-	UNICHAIN: 130,
+	POLYGON: 137,
+	OPTIMISM: 10,
+	BASE: 8453,
+	ARBITRUM: 42161,
 } as const;
 
 // Helper function to calculate nearest usable tick
@@ -184,16 +187,27 @@ const Actions = {
 	UNWRAP: 14,
 } as const;
 
-// Chain configurations
+// Chain configurations for all supported mainnet chains
 const CHAIN_CONFIGS: { [key: number]: { chain: any; rpcUrl: string } } = {
 	[ChainId.MAINNET]: {
 		chain: mainnet,
-		rpcUrl: "https://eth-mainnet.g.alchemy.com/v2/demo", // Use your actual RPC URL
+		rpcUrl: "https://ethereum-rpc.publicnode.com",
 	},
-	130: {
-		// Unichain
-		chain: unichain,
-		rpcUrl: "https://unichain-sepolia.g.alchemy.com/v2/demo", // Use your actual RPC URL
+	[ChainId.POLYGON]: {
+		chain: polygon,
+		rpcUrl: "https://polygon-rpc.com",
+	},
+	[ChainId.OPTIMISM]: {
+		chain: optimism,
+		rpcUrl: "https://mainnet.optimism.io",
+	},
+	[ChainId.BASE]: {
+		chain: base,
+		rpcUrl: "https://mainnet.base.org",
+	},
+	[ChainId.ARBITRUM]: {
+		chain: arbitrum,
+		rpcUrl: "https://arb1.arbitrum.io/rpc",
 	},
 };
 

@@ -1,4 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
+import { Token as UniswapToken } from "@uniswap/sdk-core";
 import {
 	AlertCircle,
 	ArrowRight,
@@ -9,7 +10,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { type TransactionRequest } from "viem";
+import { type Address, type TransactionRequest } from "viem";
 import { useAccount, useChainId } from "wagmi";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,7 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TokenSelectorV2 } from "@/components/token-selector-v2";
 import { useTokenManagement } from "@/hooks/use-token-management";
-import { toUniswapToken, isSupportedChain, getChainInfo } from "@/lib/tokens/multichain-tokens";
+import { toUniswapToken, isSupportedChain, type SupportedChainId } from "@/lib/tokens/multichain-tokens";
 import type { Token } from "@/types/token";
 import {
 	calculateDependentAmount,
@@ -27,32 +28,45 @@ import {
 } from "@/utils/amount-calculator";
 import { trpcClient } from "@/utils/trpc";
 
+// Token interface is now imported from @/types/token
+
+// Response types matching the server API (kept for future reference but currently unused since tRPC infers types)
+// interface MintPositionSuccessResponse {
+// 	success: true;
+// 	message: string;
+// 	transactionData: TransactionRequest;
+// 	position: {
+// 		tokenA: Token;
+// 		tokenB: Token;
+// 		amountA: number;
+// 		amountB: number;
+// 		feeTier: number;
+// 		tickLower: number;
+// 		tickUpper: number;
+// 		liquidity: string;
+// 	};
+// }
+
+// interface MintPositionErrorResponse {
+// 	success: false;
+// 	message: string;
+// }
+
+// type MintPositionResponse = MintPositionSuccessResponse | MintPositionErrorResponse;
+
 interface MintPositionFormProps {
 	onSuccess?: (transactionData: TransactionRequest) => void;
 }
 
+// Token data is now managed by useTokenManagement hook
+
 export function MintPositionForm({ onSuccess }: MintPositionFormProps) {
 	const { address } = useAccount();
-	const wagmiChainId = useChainId();
-	const chainId = isSupportedChain(wagmiChainId) ? wagmiChainId : null;
-
-	// Token management
-	const {
-		tokens,
-		loading: tokensLoading,
-		error: tokensError,
-		currentChainId,
-		supportedChains,
-		getNativeToken,
-		getWrappedToken,
-		refreshTokens
-	} = useTokenManagement();
+	const chainId = useChainId();
 
 	// Form state
 	const [tokenA, setTokenA] = useState<Token | null>(null);
 	const [tokenB, setTokenB] = useState<Token | null>(null);
-	const [showTokenASelector, setShowTokenASelector] = useState(false);
-	const [showTokenBSelector, setShowTokenBSelector] = useState(false);
 	const [amountA, setAmountA] = useState("");
 	const [amountB, setAmountB] = useState("");
 	const [feeTier, setFeeTier] = useState<number>(500); // 0.05%
@@ -66,8 +80,11 @@ export function MintPositionForm({ onSuccess }: MintPositionFormProps) {
 	const [currentPrice, setCurrentPrice] = useState<number | null>(null);
 	const [lastInputField, setLastInputField] = useState<"A" | "B" | null>(null);
 
+	// Available tokens (managed by hook)
+	const availableTokens = tokens;
+
 	// Convert our Token interface to Uniswap Token
-	const convertToUniswapToken = useCallback((token: Token) => {
+	const convertToUniswapToken = useCallback((token: Token): UniswapToken => {
 		return toUniswapToken(token);
 	}, []);
 
@@ -167,20 +184,8 @@ export function MintPositionForm({ onSuccess }: MintPositionFormProps) {
 	// tRPC mutation for minting position
 	const mintPositionMutation = useMutation({
 		mutationFn: async (params: {
-			tokenA: {
-				address: string;
-				symbol: string;
-				name: string;
-				decimals: number;
-				chainId: number;
-			};
-			tokenB: {
-				address: string;
-				symbol: string;
-				name: string;
-				decimals: number;
-				chainId: number;
-			};
+			tokenA: Token;
+			tokenB: Token;
 			amountA: number;
 			amountB: number;
 			feeTier: number;
@@ -212,32 +217,29 @@ export function MintPositionForm({ onSuccess }: MintPositionFormProps) {
 		},
 	});
 
-	// Token selection handlers
-	const handleTokenASelect = useCallback((token: Token) => {
-		if (tokenB && token.address === tokenB.address && token.chainId === tokenB.chainId) {
-			toast.error("Cannot select the same token for both positions");
-			return;
+	const handleTokenSelect = (token: Token, isTokenA: boolean) => {
+		if (isTokenA) {
+			if (tokenB && token.address === tokenB.address) {
+				toast.error("Cannot select the same token for both positions");
+				return;
+			}
+			setTokenA(token);
+			// Trigger recalculation if we have an amount for the other token
+			if (amountB && lastInputField === "B") {
+				setTimeout(() => calculateOtherAmount(amountB, false), 100);
+			}
+		} else {
+			if (tokenA && token.address === tokenA.address) {
+				toast.error("Cannot select the same token for both positions");
+				return;
+			}
+			setTokenB(token);
+			// Trigger recalculation if we have an amount for the other token
+			if (amountA && lastInputField === "A") {
+				setTimeout(() => calculateOtherAmount(amountA, true), 100);
+			}
 		}
-		setTokenA(token);
-		setShowTokenASelector(false);
-		// Trigger recalculation if we have an amount for the other token
-		if (amountB && lastInputField === "B") {
-			setTimeout(() => calculateOtherAmount(amountB, false), 100);
-		}
-	}, [tokenB, amountB, lastInputField, calculateOtherAmount]);
-
-	const handleTokenBSelect = useCallback((token: Token) => {
-		if (tokenA && token.address === tokenA.address && token.chainId === tokenA.chainId) {
-			toast.error("Cannot select the same token for both positions");
-			return;
-		}
-		setTokenB(token);
-		setShowTokenBSelector(false);
-		// Trigger recalculation if we have an amount for the other token
-		if (amountA && lastInputField === "A") {
-			setTimeout(() => calculateOtherAmount(amountA, true), 100);
-		}
-	}, [tokenA, amountA, lastInputField, calculateOtherAmount]);
+	};
 
 	const handleAmountAChange = useCallback(
 		(value: string) => {
@@ -300,27 +302,10 @@ export function MintPositionForm({ onSuccess }: MintPositionFormProps) {
 			return;
 		}
 
-		// Convert tokens to the format expected by the server
-		const serverTokenA = {
-			address: tokenA.address,
-			symbol: tokenA.symbol,
-			name: tokenA.name,
-			decimals: tokenA.decimals,
-			chainId: Number.parseInt(tokenA.chainId),
-		};
-
-		const serverTokenB = {
-			address: tokenB.address,
-			symbol: tokenB.symbol,
-			name: tokenB.name,
-			decimals: tokenB.decimals,
-			chainId: Number.parseInt(tokenB.chainId),
-		};
-
 		try {
 			await mintPositionMutation.mutateAsync({
-				tokenA: serverTokenA,
-				tokenB: serverTokenB,
+				tokenA,
+				tokenB,
 				amountA: amountANum,
 				amountB: amountBNum,
 				feeTier,
@@ -343,36 +328,8 @@ export function MintPositionForm({ onSuccess }: MintPositionFormProps) {
 		Number.parseFloat(amountA) > 0 &&
 		Number.parseFloat(amountB) > 0;
 
-	console.log("isFormValid", tokenA,tokenB,amountA,amountB);
-
-	// Get current chain info for display
-	const currentChainInfo = currentChainId ? getChainInfo(currentChainId) : null;
-
 	return (
 		<div className="space-y-6">
-			{/* Chain Info */}
-			{currentChainInfo && (
-				<Card>
-					<CardContent className="pt-6">
-						<div className="flex items-center justify-between">
-							<div className="flex items-center gap-2">
-								<span className="text-lg">{currentChainInfo.icon}</span>
-								<span className="font-medium">{currentChainInfo.displayName}</span>
-								<Badge variant="secondary">Connected</Badge>
-							</div>
-							{tokensLoading && (
-								<Badge variant="outline">Loading tokens...</Badge>
-							)}
-						</div>
-						{tokensError && (
-							<div className="mt-2 text-red-600 text-sm">
-								Failed to load tokens: {tokensError}
-							</div>
-						)}
-					</CardContent>
-				</Card>
-			)}
-
 			{/* Token Selection */}
 			<Card>
 				<CardHeader>
@@ -385,67 +342,50 @@ export function MintPositionForm({ onSuccess }: MintPositionFormProps) {
 					{/* Token A */}
 					<div className="space-y-2">
 						<Label>Token A</Label>
-						<Button
-							variant="outline"
-							onClick={() => setShowTokenASelector(true)}
-							className="w-full h-auto flex items-center justify-between p-4"
-						>
-							<div className="flex items-center gap-3">
-								{tokenA ? (
-									<>
-										{tokenA.icon && (
-											<img
-												src={tokenA.icon}
-												alt={tokenA.symbol}
-												className="h-6 w-6 rounded-full"
-											/>
-										)}
-										<div className="text-left">
-											<div className="font-medium">{tokenA.symbol}</div>
-											<div className="text-muted-foreground text-sm">
-												{tokenA.name}
-											</div>
-										</div>
-									</>
-								) : (
-									<span className="text-muted-foreground">Select Token A</span>
-								)}
-							</div>
-							<ChevronDown className="h-4 w-4" />
-						</Button>
+						<div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+							{availableTokens.map((token) => (
+								<Button
+									key={token.address}
+									variant={
+										tokenA?.address === token.address ? "default" : "outline"
+									}
+									size="sm"
+									onClick={() => handleTokenSelect(token, true)}
+								>
+									{token.symbol}
+								</Button>
+							))}
+						</div>
+						{tokenA && (
+							<p className="text-muted-foreground text-sm">
+								Selected: {tokenA.name} ({tokenA.symbol})
+							</p>
+						)}
 					</div>
 
 					{/* Token B */}
 					<div className="space-y-2">
 						<Label>Token B</Label>
-						<Button
-							variant="outline"
-							onClick={() => setShowTokenBSelector(true)}
-							className="w-full h-auto flex items-center justify-between p-4"
-						>
-							<div className="flex items-center gap-3">
-								{tokenB ? (
-									<>
-										{tokenB.icon && (
-											<img
-												src={tokenB.icon}
-												alt={tokenB.symbol}
-												className="h-6 w-6 rounded-full"
-											/>
-										)}
-										<div className="text-left">
-											<div className="font-medium">{tokenB.symbol}</div>
-											<div className="text-muted-foreground text-sm">
-												{tokenB.name}
-											</div>
-										</div>
-									</>
-								) : (
-									<span className="text-muted-foreground">Select Token B</span>
-								)}
-							</div>
-							<ChevronDown className="h-4 w-4" />
-						</Button>
+						<div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+							{availableTokens.map((token) => (
+								<Button
+									key={token.address}
+									variant={
+										tokenB?.address === token.address ? "default" : "outline"
+									}
+									size="sm"
+									onClick={() => handleTokenSelect(token, false)}
+									disabled={tokenA?.address === token.address}
+								>
+									{token.symbol}
+								</Button>
+							))}
+						</div>
+						{tokenB && (
+							<p className="text-muted-foreground text-sm">
+								Selected: {tokenB.name} ({tokenB.symbol})
+							</p>
+						)}
 					</div>
 
 					{/* Swap Button */}
@@ -712,7 +652,11 @@ export function MintPositionForm({ onSuccess }: MintPositionFormProps) {
 							<div className="flex justify-between">
 								<span className="text-muted-foreground">Chain:</span>
 								<span>
-									{currentChainInfo?.displayName || `Chain ${chainId}`}
+									{chainId === 1
+										? "Ethereum"
+										: chainId === 130
+											? "Unichain"
+											: `Chain ${chainId}`}
 								</span>
 							</div>
 						</div>
@@ -731,43 +675,6 @@ export function MintPositionForm({ onSuccess }: MintPositionFormProps) {
 					? "Minting Position..."
 					: "Mint Position"}
 			</Button>
-
-			{/* Token Selectors */}
-			<TokenSelectorV2
-				isOpen={showTokenASelector}
-				onClose={() => setShowTokenASelector(false)}
-				onTokenSelect={handleTokenASelect}
-				selectedToken={tokenA || undefined}
-				tokens={tokens}
-				loading={tokensLoading}
-				error={tokensError ? new Error(tokensError) : undefined}
-				title="Select Token A"
-				subtitle="Choose the first token for your liquidity position"
-				supportedChains={supportedChains}
-				currentChainId={currentChainId?.toString()}
-				onRefresh={() => currentChainId && refreshTokens(currentChainId)}
-				showBalances={false}
-				enableFilters={true}
-				enableHistory={true}
-			/>
-
-			<TokenSelectorV2
-				isOpen={showTokenBSelector}
-				onClose={() => setShowTokenBSelector(false)}
-				onTokenSelect={handleTokenBSelect}
-				selectedToken={tokenB || undefined}
-				tokens={tokens}
-				loading={tokensLoading}
-				error={tokensError ? new Error(tokensError) : undefined}
-				title="Select Token B"
-				subtitle="Choose the second token for your liquidity position"
-				supportedChains={supportedChains}
-				currentChainId={currentChainId?.toString()}
-				onRefresh={() => currentChainId && refreshTokens(currentChainId)}
-				showBalances={false}
-				enableFilters={true}
-				enableHistory={true}
-			/>
 		</div>
 	);
 }
