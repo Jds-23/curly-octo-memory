@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
 import { type Address, type Hex, encodeFunctionData, erc20Abi, zeroAddress } from "viem";
 import { usePublicClient } from "wagmi";
 
@@ -44,18 +45,26 @@ export function useAllowance({
 }: UseAllowanceParams) {
 	const publicClient = usePublicClient({ chainId });
 
+	// Create a serializable query key (convert bigints to strings)
+	const queryKey = useMemo(() => {
+		const serializedTokens = tokens.map((t) => ({
+			address: t.address,
+			amount: t.amount.toString(),
+		}));
+		return ["allowance", serializedTokens, spender, owner, chainId];
+	}, [tokens, spender, owner, chainId]);
+
 	const {
 		data: steps = [],
 		isLoading,
 		refetch,
 		error,
 	} = useQuery({
-		queryKey: ["allowance", tokens, spender, owner, chainId],
+		queryKey,
 		queryFn: async (): Promise<ApprovalStep[]> => {
 			if (!publicClient) {
 				throw new Error("Public client not available");
 			}
-
 			// Filter out native tokens
 			const erc20Tokens = tokens.filter(
 				(token) => token.address.toLowerCase() !== zeroAddress.toLowerCase(),

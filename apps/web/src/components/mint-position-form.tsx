@@ -1,4 +1,3 @@
-import { useMutation } from "@tanstack/react-query";
 import {
 	AlertCircle,
 	ArrowRight,
@@ -9,7 +8,6 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { type TransactionRequest } from "viem";
 import { useAccount, useChainId } from "wagmi";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,6 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TokenSelectorV2 } from "@/components/token-selector-v2";
+import { useMintPosition } from "@/hooks/use-mint-position";
 import { useTokenManagement } from "@/hooks/use-token-management";
 import { toUniswapToken, isSupportedChain, getChainInfo } from "@/lib/tokens/multichain-tokens";
 import type { Token } from "@/types/token";
@@ -25,10 +24,9 @@ import {
 	calculateDependentAmount,
 	getCurrentPriceRatio,
 } from "@/utils/amount-calculator";
-import { trpcClient } from "@/utils/trpc";
 
 interface MintPositionFormProps {
-	onSuccess?: (transactionData: TransactionRequest) => void;
+	onSuccess?: () => void;
 }
 
 export function MintPositionForm({ onSuccess }: MintPositionFormProps) {
@@ -43,8 +41,6 @@ export function MintPositionForm({ onSuccess }: MintPositionFormProps) {
 		error: tokensError,
 		currentChainId,
 		supportedChains,
-		getNativeToken,
-		getWrappedToken,
 		refreshTokens
 	} = useTokenManagement();
 
@@ -65,6 +61,27 @@ export function MintPositionForm({ onSuccess }: MintPositionFormProps) {
 	const [autoCalculateEnabled, setAutoCalculateEnabled] = useState(true);
 	const [currentPrice, setCurrentPrice] = useState<number | null>(null);
 	const [lastInputField, setLastInputField] = useState<"A" | "B" | null>(null);
+
+	// Mint position hook
+	const {
+		execute: executeMint,
+		status: mintStatus,
+		balanceError,
+		isReady,
+		isExecuting,
+		reset: resetMint,
+	} = useMintPosition({
+		tokenA,
+		tokenB,
+		amountA,
+		amountB,
+		feeTier,
+		fullRange,
+		tickRange: Number.parseInt(tickRange) || 500,
+		slippageTolerance: Number.parseFloat(slippageTolerance) || 0.5,
+		owner: address,
+		chainId: tokenA ? Number.parseInt(tokenA.chainId) : 1,
+	});
 
 	// Convert our Token interface to Uniswap Token
 	const convertToUniswapToken = useCallback((token: Token) => {
@@ -164,53 +181,21 @@ export function MintPositionForm({ onSuccess }: MintPositionFormProps) {
 		fetchPrice();
 	}, [tokenA, tokenB, feeTier, convertToUniswapToken]);
 
-	// tRPC mutation for minting position
-	const mintPositionMutation = useMutation({
-		mutationFn: async (params: {
-			tokenA: {
-				address: string;
-				symbol: string;
-				name: string;
-				decimals: number;
-				chainId: number;
-			};
-			tokenB: {
-				address: string;
-				symbol: string;
-				name: string;
-				decimals: number;
-				chainId: number;
-			};
-			amountA: number;
-			amountB: number;
-			feeTier: number;
-			fullRange: boolean;
-			tickRange: number;
-			slippageTolerance: number;
-			recipient: string;
-		}) => {
-			return trpcClient.uniswap.mintPosition.mutate(params);
-		},
-		onSuccess: (data: any) => {
-			if (data.success && data.transactionData) {
-				toast.success(
-					`Transaction prepared successfully! Ready to execute on-chain.`,
-				);
-				console.log("Transaction prepared successfully! Ready to execute on-chain.", data.transactionData);
-				// onSuccess?.(data.transactionData);
-				// Reset form
-				setTokenA(null);
-				setTokenB(null);
-				setAmountA("");
-				setAmountB("");
-			} else {
-				toast.error(data.message || "Failed to prepare position mint");
-			}
-		},
-		onError: (error: Error) => {
-			toast.error(`Error preparing position mint: ${error.message}`);
-		},
-	});
+	// Handle mint success
+	useEffect(() => {
+		if (mintStatus === "success") {
+			toast.success("Position minted successfully!");
+			// Reset form
+			setTokenA(null);
+			setTokenB(null);
+			setAmountA("");
+			setAmountB("");
+			resetMint();
+			onSuccess?.();
+		} else if (mintStatus === "error") {
+			toast.error("Transaction failed. Please try again.");
+		}
+	}, [mintStatus, resetMint, onSuccess]);
 
 	// Token selection handlers
 	const handleTokenASelect = useCallback((token: Token) => {
@@ -300,50 +285,29 @@ export function MintPositionForm({ onSuccess }: MintPositionFormProps) {
 			return;
 		}
 
-		// Convert tokens to the format expected by the server
-		const serverTokenA = {
-			address: tokenA.address,
-			symbol: tokenA.symbol,
-			name: tokenA.name,
-			decimals: tokenA.decimals,
-			chainId: Number.parseInt(tokenA.chainId),
-		};
-
-		const serverTokenB = {
-			address: tokenB.address,
-			symbol: tokenB.symbol,
-			name: tokenB.name,
-			decimals: tokenB.decimals,
-			chainId: Number.parseInt(tokenB.chainId),
-		};
-
-		try {
-			await mintPositionMutation.mutateAsync({
-				tokenA: serverTokenA,
-				tokenB: serverTokenB,
-				amountA: amountANum,
-				amountB: amountBNum,
-				feeTier,
-				fullRange,
-				tickRange: fullRange ? 0 : Number.parseInt(tickRange),
-				slippageTolerance: Number.parseFloat(slippageTolerance),
-				recipient: address,
-			});
-		} catch (error) {
-			// Error handling is done in the mutation's onError callback
-			console.error("Mint position error:", error);
-		}
+		// Execute mint transaction via hook
+		await executeMint();
 	};
 
-	const isFormValid =
-		tokenA &&
-		tokenB &&
-		amountA &&
-		amountB &&
-		Number.parseFloat(amountA) > 0 &&
-		Number.parseFloat(amountB) > 0;
+	// Get button text based on status
+	const getButtonText = () => {
+		if (balanceError) return balanceError;
 
-	console.log("isFormValid", tokenA,tokenB,amountA,amountB);
+		switch (mintStatus) {
+			case "checking-balance":
+				return "Checking balances...";
+			case "preparing":
+				return "Preparing transaction...";
+			case "checking-allowance":
+				return "Checking allowances...";
+			case "executing":
+				return "Executing transaction...";
+			case "confirming":
+				return "Confirming...";
+			default:
+				return "Mint Position";
+		}
+	};
 
 	// Get current chain info for display
 	const currentChainInfo = currentChainId ? getChainInfo(currentChainId) : null;
@@ -723,13 +687,12 @@ export function MintPositionForm({ onSuccess }: MintPositionFormProps) {
 			{/* Mint Button */}
 			<Button
 				onClick={handleMintPosition}
-				disabled={!isFormValid || mintPositionMutation.isPending}
+				disabled={!isReady || isExecuting}
+				variant={balanceError ? "destructive" : "default"}
 				className="w-full"
 				size="lg"
 			>
-				{mintPositionMutation.isPending
-					? "Minting Position..."
-					: "Mint Position"}
+				{getButtonText()}
 			</Button>
 
 			{/* Token Selectors */}

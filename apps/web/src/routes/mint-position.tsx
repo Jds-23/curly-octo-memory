@@ -1,6 +1,5 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
-import { type TransactionRequest } from "viem";
 import { MintPositionForm } from "@/components/mint-position-form";
 import { Button } from "@/components/ui/button";
 import { WalletGuard } from "@/components/wallet-guard";
@@ -20,10 +19,8 @@ function MintPositionComponent() {
 function MintPositionContent() {
 	const router = useRouter();
 
-	const handleSuccess = (transactionData: TransactionRequest) => {
-		// TODO: Execute the transaction here or pass it to a transaction handler
-		console.log("Transaction prepared:", transactionData);
-		// Navigate back to positions page after successful preparation
+	const handleSuccess = () => {
+		// Navigate back to positions page after successful mint
 		router.navigate({ to: "/positions" });
 	};
 

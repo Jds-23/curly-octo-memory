@@ -147,11 +147,51 @@ interface ListPositionsResponse {
 	positions: Position[];
 }
 
-// Constants for Uniswap v4 contracts
-const CONTRACTS = {
-	STATE_VIEW_ADDRESS: "0x86e8631a016f9068c3f085faf484ee3f5fdee8f2" as Address, // StateView contract
-	POSITION_MANAGER: "0x4529a01c7a0410167c5740c487a8de60232617bf" as Address, // Position Manager (Unichain)
-	PERMIT2: "0x000000000022D473030F116dDEE9F6B43aC78BA3" as Address,
+// Uniswap V4 contract addresses by chain
+const CONTRACTS: Record<
+	number,
+	{
+		POOL_MANAGER: Address;
+		POSITION_MANAGER: Address;
+		STATE_VIEW: Address;
+		PERMIT2: Address;
+	}
+> = {
+	// Ethereum Mainnet
+	[ChainId.MAINNET]: {
+		POOL_MANAGER: "0x000000000004444c5dc75cB358380D2e3dE08A90",
+		POSITION_MANAGER: "0xbd216513d74c8cf14cf4747e6aaa6420ff64ee9e",
+		STATE_VIEW: "0x7ffe42c4a5deea5b0fec41c94c136cf115597227",
+		PERMIT2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+	},
+	// Polygon
+	[ChainId.POLYGON]: {
+		POOL_MANAGER: "0xab03d3befe6b4ae11e2bd0a3779ecb7205fe6ab2",
+		POSITION_MANAGER: "0xe07d0f42c898c8686a7fa1ba28b73e5a73c7e4ae",
+		STATE_VIEW: "0x3e10dded6ca35faa5cf1bf2e65b1e60f2d5b5c5a",
+		PERMIT2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+	},
+	// Optimism
+	[ChainId.OPTIMISM]: {
+		POOL_MANAGER: "0x9a13f98cb987694c9f086b1f5eb990eea8264ec3",
+		POSITION_MANAGER: "0x3c3ea4b57a46241e54610e5f022e5c45859a1017",
+		STATE_VIEW: "0xc18a3169788f4f75a170290584eca6395c75ecdb",
+		PERMIT2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+	},
+	// Base
+	[ChainId.BASE]: {
+		POOL_MANAGER: "0x498581ff718922c3f8e6a244956af099b2652b2b",
+		POSITION_MANAGER: "0x7c5f5a4bbd8fd63184577525326123b519429bdc",
+		STATE_VIEW: "0xa3c0c9b65bad0b08107aa264b0f3db444b867a71",
+		PERMIT2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+	},
+	// Arbitrum
+	[ChainId.ARBITRUM]: {
+		POOL_MANAGER: "0x4444444443c93dd47726ac8a34ae1f8baf6b1b82",
+		POSITION_MANAGER: "0x5e1a6231bd58b9e5b5e4a0eb5bc1f4b4f3c0d98d",
+		STATE_VIEW: "0x89b94a2de0f3d97eabf8dd33c4b2e5d0e1b5e3df",
+		PERMIT2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+	},
 } as const;
 
 // Uniswap v4 Position Manager ABI (focused on modifyLiquidities function)
@@ -479,6 +519,9 @@ export const uniswapRouter = router({
 					recipient,
 				} = input;
 
+				console.log("tokenA", tokenA.chainId);
+				console.log("tokenB", tokenB.chainId);
+				
 				// Validate chain support
 				const chainConfig = CHAIN_CONFIGS[tokenA.chainId];
 				if (!chainConfig) {
@@ -488,6 +531,17 @@ export const uniswapRouter = router({
 					} satisfies MintPositionResponse;
 				}
 
+				
+				// Get chain-specific contracts
+				const chainContracts = CONTRACTS[tokenA.chainId];
+				if (!chainContracts) {
+					return {
+						success: false,
+						message: `Uniswap V4 contracts not deployed on chain ID: ${tokenA.chainId}`,
+					} satisfies MintPositionResponse;
+				}
+				
+				console.log("chainContracts", chainContracts);
 				// Create token definitions
 				const token0: Token = {
 					chainId: tokenA.chainId,
@@ -647,7 +701,7 @@ export const uniswapRouter = router({
 					success: true,
 					message: "Position mint transaction prepared successfully",
 					transactionData: {
-						to: CONTRACTS.POSITION_MANAGER,
+						to: chainContracts.POSITION_MANAGER,
 						data: calldata,
 						value: ethValue, // Already converted to string
 						gas: "500000", // Convert BigInt to string for tRPC serialization

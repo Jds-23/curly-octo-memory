@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
 import { type Address, erc20Abi, zeroAddress } from "viem";
 import { usePublicClient } from "wagmi";
 
@@ -45,13 +46,24 @@ export function useBalanceChecks({
 	// In production, you might want to create multiple clients or handle this differently
 	const publicClient = usePublicClient({ chainId: chainIds[0] });
 
+	// Create a serializable query key (convert bigints to strings)
+	const queryKey = useMemo(() => {
+		const serializedTokens = tokens.map((t) => ({
+			address: t.address,
+			chainId: t.chainId,
+			decimals: t.decimals,
+			requiredAmount: t.requiredAmount.toString(),
+		}));
+		return ["balance-checks", serializedTokens, owner];
+	}, [tokens, owner]);
+
 	const {
 		data: balances = [],
 		isLoading,
 		refetch,
 		error,
 	} = useQuery({
-		queryKey: ["balance-checks", tokens, owner],
+		queryKey,
 		queryFn: async (): Promise<BalanceInfo[]> => {
 			if (!publicClient) {
 				throw new Error("Public client not available");
