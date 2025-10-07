@@ -166,9 +166,9 @@ const CONTRACTS: Record<
 	},
 	// Polygon
 	[ChainId.POLYGON]: {
-		POOL_MANAGER: "0xab03d3befe6b4ae11e2bd0a3779ecb7205fe6ab2",
-		POSITION_MANAGER: "0xe07d0f42c898c8686a7fa1ba28b73e5a73c7e4ae",
-		STATE_VIEW: "0x3e10dded6ca35faa5cf1bf2e65b1e60f2d5b5c5a",
+		POOL_MANAGER: "0x67366782805870060151383f4bbff9dab53e5cd6",
+		POSITION_MANAGER: "0x1ec2ebf4f37e7363fdfe3551602425af0b3ceef9",
+		STATE_VIEW: "0x5ea1bd7974c8a611cbab0bdcafcb1d9cc9b3ba5a",
 		PERMIT2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
 	},
 	// Optimism
@@ -518,9 +518,6 @@ export const uniswapRouter = router({
 					// slippageTolerance, // Currently unused
 					recipient,
 				} = input;
-
-				console.log("tokenA", tokenA.chainId);
-				console.log("tokenB", tokenB.chainId);
 				
 				// Validate chain support
 				const chainConfig = CHAIN_CONFIGS[tokenA.chainId];

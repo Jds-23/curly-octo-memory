@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type Address, type Hex, type TransactionRequest, formatUnits, parseUnits, zeroAddress } from "viem";
-import { useSendCalls, useCallsStatus } from "wagmi/experimental";
 import { useBalanceChecks } from "./use-balance-checks";
+import { useCallsStatus } from "./use-calls-status";
+import { useSendCalls } from "./use-send-calls";
 import type { Token } from "@/types/token";
 import { trpcClient } from "@/utils/trpc";
 
@@ -108,22 +109,19 @@ export function useMintPosition({
 
 	// Allowance checks will be done manually after we have the router address
 
-	// Batch transaction execution
-	const { data: callsId, sendCalls } = useSendCalls();
+	// Batch transaction execution with fallback to sequential
+	const { sendCalls, data: sendResult } = useSendCalls({
+		enable5792: false, // Disable EIP-5792 for now, use sequential mode
+	});
 
-	// Status monitoring - only call when we have a callsId
+	// Status monitoring - unified for both batch and sequential modes
 	const { data: callsStatus } = useCallsStatus({
-		id: callsId?.id ?? "",
+		id: sendResult?.id,
+		mode: sendResult?.mode,
+		transactionHashes: sendResult?.transactionHashes,
 		query: {
-			enabled: !!callsId?.id,
-			refetchInterval: (query) => {
-				const status = query.state.data?.status;
-				// Stop polling if transaction is confirmed or failed
-				if (status === "success" || status === "failure") {
-					return false;
-				}
-				return 1000; // Poll every second
-			},
+			enabled: !!sendResult?.id,
+			refetchInterval: 1000, // Poll every second
 		},
 	});
 
@@ -204,7 +202,7 @@ export function useMintPosition({
 			// 2. Prepare transaction via tRPC
 			setStatus("preparing");
 
-			const result = await trpcClient.uniswap.mintPosition.mutate({
+			const trpcResult = await trpcClient.uniswap.mintPosition.mutate({
 				tokenA: {
 					address: tokenA.address,
 					symbol: tokenA.symbol,
@@ -228,14 +226,14 @@ export function useMintPosition({
 				recipient: owner,
 			});
 
-			if (!result.success || !result.transactionData) {
-				setError(result.message || "Failed to prepare transaction");
+			if (!trpcResult.success || !trpcResult.transactionData) {
+				setError(trpcResult.message || "Failed to prepare transaction");
 				setStatus("error");
 				return;
 			}
 
 			// 3. Extract transaction data and router address
-			const txData = result.transactionData as unknown as TransactionRequest;
+			const txData = trpcResult.transactionData as unknown as TransactionRequest;
 			const routerAddr = txData.to as Address;
 
 			// 4. Check allowances manually now that we have the router address
@@ -327,7 +325,6 @@ export function useMintPosition({
 			// 5. Build batch calls (approvals + mint)
 			const calls: Array<{ to: Address; data: Hex; value: bigint }> = [];
 
-			debugger
 			// Add approval transactions if needed
 			for (const step of approvalStepsTemp) {
 				calls.push({
@@ -344,12 +341,13 @@ export function useMintPosition({
 				value: (txData.value as bigint) || 0n,
 			});
 
-			// 6. Execute batch transaction
+			// 6. Execute batch transaction (or sequential if EIP-5792 not supported)
 			setStatus("executing");
-			await sendCalls({
+			const executionResult = await sendCalls({
 				calls,
 			});
 
+			console.log("Transaction execution result:", executionResult);
 			setStatus("confirming");
 		} catch (err) {
 			console.error("Mint position error:", err);
@@ -389,7 +387,7 @@ export function useMintPosition({
 		error: error || (balancesError as Error)?.message || null,
 		balanceError,
 		transactionHash,
-		callsId: callsId?.id,
+		callsId: sendResult?.id,
 		isReady,
 		isExecuting,
 		reset,
