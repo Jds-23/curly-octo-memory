@@ -1,0 +1,46 @@
+name: General issue (fallback)
+description: Use when no other template fits
+title: "issue: <short summary>"
+labels: [needs-triage]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      placeholder: Concise description of the issue or proposal
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context / Current State
+      placeholder: What exists today? Which files/modules are involved?
+
+  - type: textarea
+    id: plan
+    attributes:
+      label: Proposed Plan
+      placeholder: High-level approach, affected layers/modules
+
+  - type: textarea
+    id: files
+    attributes:
+      label: Files to Create/Modify
+      placeholder: src/... paths, config/*.json, migrations
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      placeholder: Checklist of outcomes
+
+  - type: checkboxes
+    id: followups
+    attributes:
+      label: Follow-ups
+      options:
+        - label: Update openapi.yaml if endpoints/schemas change
+        - label: Add or update tests in tests/
+        - label: Add config docs in README or issues/README
+

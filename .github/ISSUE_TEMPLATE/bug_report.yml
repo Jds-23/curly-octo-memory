@@ -1,0 +1,100 @@
+name: Bug report
+description: Report bugs or issues with the UI.
+title: "[BUG]: <short summary>"
+labels: [bug, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report! The more info you provide, the more we can help you.
+
+  - type: checkboxes
+    attributes:
+      label: Check existing issues
+      description: By submitting this issue, you checked there isn't [already an issue](https://github.com/router-protocol/blinq-ui/issues) for this bug.
+      options:
+        - label: I checked there isn't [already an issue](https://github.com/router-protocol/blinq-ui/issues) for the bug I encountered.
+          required: true
+
+  - type: textarea
+    attributes:
+      label: Describe the bug
+      description: Clear and concise description of the bug. If you intend to submit a PR for this issue, tell us in the description. Thanks!
+      placeholder: I am doing… What I expect is… What is actually happening…
+    validations:
+      required: true
+
+  - type: input
+    id: video
+    attributes:
+      label: Link to a Jam/Loom Video
+      description: "Please provide a link to a public Jam Video for runtime issues. Dowload Jam here (https://jam.dev/)"
+      placeholder: https://jam.dev/c/ac05b7ff-8209-4194-bec6-ba2108d980a7
+    validations:
+      required: false
+
+  - type: textarea
+    attributes:
+      label: Steps To Reproduce
+      description: Steps to reproduce the behavior.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - P0 - Critical
+        - P1 - High
+        - P2 - Medium
+        - P3 - Low
+    validations:
+      required: true
+
+  - type: input
+    attributes:
+      label: Browser (name + version)
+      description: Which browser are you using?
+      placeholder: Chrome 123
+    validations:
+      required: true
+
+  - type: input
+    attributes:
+      label: OS / Platform 
+      description: Which OS are you using?
+      placeholder: e.g. iOS 17, Windows 11, Android 14
+    validations:
+      required: false
+
+  - type: input
+    attributes:
+      label: Device
+      description: Which device are you using?
+      placeholder: e.g. iPhone 14 Pro, Pixel 7, MacBook Pro 2023
+    validations:
+      required: false
+
+  - type: input
+    attributes:
+      label: Wallet
+      description: What wallet are you using?
+      placeholder: e.g. Uniswap Wallet, MetaMask, Rainbow
+    validations:
+      required: true
+
+  - type: input
+    attributes:
+      label: Network
+      description: Which network are you using?
+      placeholder: e.g. Ethereum Mainnet, Arbitrum, Base, etc.
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Anything else?
+      description: Anything that will give us more context about the issue you are encountering. Browser, OS, passkey/password manager, etc.
+    validations:
+      required: false

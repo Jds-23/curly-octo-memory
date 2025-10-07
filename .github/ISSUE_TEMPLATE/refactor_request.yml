@@ -1,0 +1,138 @@
+name: Refactor Request
+description: Propose code improvements, restructuring, or technical debt reduction
+title: "[REFACTOR]: <short summary>"
+labels: [enhancement, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to suggest a refactor! These improvements help maintain code quality and developer experience.
+
+  - type: checkboxes
+    attributes:
+      label: Check existing issues
+      description: By submitting this refactor request, you checked there isn't [already a similar request](https://github.com/router-protocol/blinq-ui/issues) for this refactor.
+      options:
+        - label: I checked there isn't [already a similar request](https://github.com/router-protocol/blinq-ui/issues) for this refactor.
+          required: true
+
+  - type: textarea
+    attributes:
+      label: Code location / Component(s)
+      description: Specify the files, components, or modules that need refactoring.
+      placeholder: e.g. components/SwapInterface.tsx, lib/actions/handleEvmTransactions.ts, entire TokenSelector component
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Current issues with the code
+      description: Describe what's problematic with the current implementation.
+      placeholder: The current code has duplicated logic, poor separation of concerns, hard to test, etc.
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Proposed refactor approach
+      description: Describe how you think the code should be restructured.
+      placeholder: Extract utility functions, split large components, improve type safety, add proper error handling, etc.
+    validations:
+      required: true
+
+  - type: dropdown
+    attributes:
+      label: Refactor Type
+      description: What type of refactor is this?
+      options:
+        - Code structure improvement
+        - Performance optimization
+        - Type safety enhancement
+        - Error handling improvement
+        - Test coverage addition
+        - Accessibility improvement
+        - Code duplication removal
+        - Architecture restructuring
+        - Technical debt reduction
+        - Dependencies update
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    attributes:
+      label: Priority Level
+      description: How important is this refactor?
+      options:
+        - Low - Nice to have
+        - Medium - Should be addressed
+        - High - Important for maintainability
+        - Critical - Blocking development or causing issues
+    validations:
+      required: true
+
+  - type: dropdown
+    attributes:
+      label: Impact Level
+      description: How much of the codebase would this refactor affect?
+      options:
+        - Small - Single file or component
+        - Medium - Few related files/components
+        - Large - Multiple components or modules
+        - Major - Significant architecture changes
+    validations:
+      required: true
+
+  - type: checkboxes
+    attributes:
+      label: Breaking changes
+      description: Would this refactor introduce breaking changes?
+      options:
+        - label: This refactor would introduce breaking changes to the public API
+        - label: This refactor would require database migrations
+        - label: This refactor would require environment variable changes
+        - label: This refactor is backward compatible
+
+  - type: textarea
+    attributes:
+      label: Benefits of refactoring
+      description: What benefits would this refactor provide?
+      placeholder: Improved maintainability, better performance, easier testing, reduced bundle size, etc.
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Potential risks
+      description: What are the potential risks or challenges of this refactor?
+      placeholder: Breaking existing functionality, performance regressions, complex migration, etc.
+    validations:
+      required: false
+
+  - type: input
+    attributes:
+      label: Estimated effort
+      description: How much development time do you estimate this would take?
+      placeholder: e.g. 2-3 hours, 1-2 days, 1 week
+    validations:
+      required: false
+
+  - type: textarea
+    attributes:
+      label: Implementation plan
+      description: Optional - Outline the steps needed to implement this refactor.
+      placeholder: |
+        1. Create new utility functions
+        2. Update existing components to use new utilities
+        3. Add tests for refactored code
+        4. Update documentation
+    validations:
+      required: false
+
+  - type: textarea
+    attributes:
+      label: Additional context
+      description: Add any other context, code examples, or references about the refactor request here.
+      placeholder: Links to similar implementations, code snippets, architectural diagrams, etc.
+    validations:
+      required: false

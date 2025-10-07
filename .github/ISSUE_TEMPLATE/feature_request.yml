@@ -1,0 +1,93 @@
+name: Feature request
+description: Suggest an idea for this project
+title: "[FEATURE]: <short summary>"
+labels: [enhancement, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to suggest a new feature! Your ideas help us improve the product for everyone.
+
+  - type: checkboxes
+    attributes:
+      label: Check existing issues
+      description: By submitting this feature request, you checked there isn't [already a similar request](https://github.com/router-protocol/blinq-ui/issues) for this feature.
+      options:
+        - label: I checked there isn't [already a similar request](https://github.com/router-protocol/blinq-ui/issues) for this feature.
+          required: true
+
+  - type: textarea
+    attributes:
+      label: Is your feature request related to a problem? Please describe.
+      description: A clear and concise description of what the problem is.
+      placeholder: I'm always frustrated when...
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Describe the solution you'd like
+      description: A clear and concise description of what you want to happen.
+      placeholder: I would like to see...
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Describe alternatives you've considered
+      description: A clear and concise description of any alternative solutions or features you've considered.
+      placeholder: I have considered...
+    validations:
+      required: false
+
+  - type: dropdown
+    attributes:
+      label: Priority Level
+      description: How important is this feature to you?
+      options:
+        - Nice to have
+        - Important
+        - Critical
+    validations:
+      required: true
+
+  - type: dropdown
+    attributes:
+      label: Feature Category
+      description: Which area does this feature relate to?
+      options:
+        - UI/UX Improvement
+        - New Functionality
+        - Performance Enhancement
+        - Wallet Integration
+        - Network Support
+        - Developer Experience
+        - Security
+        - Accessibility
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    attributes:
+      label: Affected Platform(s)
+      description: Which platforms would this feature affect?
+      placeholder: e.g. Web, Mobile, Desktop, All platforms
+    validations:
+      required: false
+
+  - type: textarea
+    attributes:
+      label: Use Case / User Story
+      description: Describe a specific scenario where this feature would be useful.
+      placeholder: As a [type of user], I want [feature] so that [benefit/goal]...
+    validations:
+      required: false
+
+  - type: textarea
+    attributes:
+      label: Additional context
+      description: Add any other context, screenshots, mockups, or examples about the feature request here.
+      placeholder: Links to similar implementations, screenshots, etc.
+    validations:
+      required: false
