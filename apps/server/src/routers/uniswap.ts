@@ -1,15 +1,17 @@
 import {
 	type Address,
-	encodeFunctionData,
-	type Hex,
-	type TransactionRequest,
+	createPublicClient,
+	encodeAbiParameters,
+	http,
+	keccak256,
+	parseAbiParameters,
 } from "viem";
 import { arbitrum, base, mainnet, optimism, polygon } from "viem/chains";
 import { z } from "zod";
 import { publicProcedure, router } from "../lib/trpc";
 
 // Type definitions
-export interface Token {
+export interface TokenInfo {
 	chainId: number;
 	address: Address;
 	decimals: number;
@@ -21,21 +23,29 @@ export interface Token {
 interface MintPositionSuccessResponse {
 	success: true;
 	message: string;
-	transactionData: {
-		to: Address;
-		data: Hex;
-		value: string; // Use string instead of BigInt for tRPC serialization
-		gas: string; // Use string instead of BigInt for tRPC serialization
+	poolState: {
+		sqrtPriceX96: string;
+		currentTick: number;
+		currentLiquidity: string;
+		poolId: string;
 	};
-	position: {
-		tokenA: Token;
-		tokenB: Token;
-		amountA: number;
-		amountB: number;
-		feeTier: number;
+	poolKey: {
+		token0: TokenInfo;
+		token1: TokenInfo;
+		fee: number;
+		tickSpacing: number;
+		hookAddress: string;
+	};
+	positionParams: {
 		tickLower: number;
 		tickUpper: number;
-		liquidity: string;
+		amount0: string;
+		amount1: string;
+	};
+	contractAddresses: {
+		positionManager: Address;
+		stateView: Address;
+		permit2: Address;
 	};
 }
 
@@ -77,19 +87,47 @@ type PositionDetailsResponse =
 	| PositionDetailsSuccessResponse
 	| PositionDetailsErrorResponse;
 
-// ChainId constants for supported mainnet chains
-const ChainId = {
-	MAINNET: 1,
-	POLYGON: 137,
-	OPTIMISM: 10,
-	BASE: 8453,
-	ARBITRUM: 42161,
-} as const;
+// StateView ABI for fetching pool state
+const STATE_VIEW_ABI = [
+	{
+		inputs: [{ name: "poolId", type: "bytes32" }],
+		name: "getSlot0",
+		outputs: [
+			{ name: "sqrtPriceX96", type: "uint160" },
+			{ name: "tick", type: "int24" },
+			{ name: "protocolFee", type: "uint24" },
+			{ name: "lpFee", type: "uint24" },
+		],
+		stateMutability: "view",
+		type: "function",
+	},
+	{
+		inputs: [{ name: "poolId", type: "bytes32" }],
+		name: "getLiquidity",
+		outputs: [{ name: "liquidity", type: "uint128" }],
+		stateMutability: "view",
+		type: "function",
+	},
+] as const;
 
-// Helper function to calculate nearest usable tick
-function nearestUsableTick(tick: number, tickSpacing: number): number {
-	return Math.round(tick / tickSpacing) * tickSpacing;
-}
+// Permit2 ABI
+const PERMIT2_ABI = [
+	{
+		inputs: [
+			{ name: "owner", type: "address" },
+			{ name: "token", type: "address" },
+			{ name: "spender", type: "address" },
+		],
+		name: "allowance",
+		outputs: [
+			{ name: "amount", type: "uint160" },
+			{ name: "expiration", type: "uint48" },
+			{ name: "nonce", type: "uint48" },
+		],
+		stateMutability: "view",
+		type: "function",
+	},
+] as const;
 
 const UNISWAP_INTERFACE_API_URL =
 	"https://interface.gateway.uniswap.org/v2/pools.v1.PoolsService/ListPositions";
@@ -126,7 +164,7 @@ interface PoolPosition {
 	totalApr: number;
 }
 
-interface V4Position {
+interface ApiV4Position {
 	poolPosition: PoolPosition;
 	hooks: Array<{
 		address: string;
@@ -136,7 +174,7 @@ interface V4Position {
 export interface Position {
 	chainId: number;
 	protocolVersion: string;
-	v4Position?: V4Position;
+	v4Position?: ApiV4Position;
 	v3Position?: PoolPosition;
 	v2Position?: any; // V2 positions have different structure
 	status: string;
@@ -158,35 +196,35 @@ const CONTRACTS: Record<
 	}
 > = {
 	// Ethereum Mainnet
-	[ChainId.MAINNET]: {
+	1: {
 		POOL_MANAGER: "0x000000000004444c5dc75cB358380D2e3dE08A90",
 		POSITION_MANAGER: "0xbd216513d74c8cf14cf4747e6aaa6420ff64ee9e",
 		STATE_VIEW: "0x7ffe42c4a5deea5b0fec41c94c136cf115597227",
 		PERMIT2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
 	},
 	// Polygon
-	[ChainId.POLYGON]: {
+	137: {
 		POOL_MANAGER: "0x67366782805870060151383f4bbff9dab53e5cd6",
 		POSITION_MANAGER: "0x1ec2ebf4f37e7363fdfe3551602425af0b3ceef9",
 		STATE_VIEW: "0x5ea1bd7974c8a611cbab0bdcafcb1d9cc9b3ba5a",
 		PERMIT2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
 	},
 	// Optimism
-	[ChainId.OPTIMISM]: {
+	10: {
 		POOL_MANAGER: "0x9a13f98cb987694c9f086b1f5eb990eea8264ec3",
 		POSITION_MANAGER: "0x3c3ea4b57a46241e54610e5f022e5c45859a1017",
 		STATE_VIEW: "0xc18a3169788f4f75a170290584eca6395c75ecdb",
 		PERMIT2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
 	},
 	// Base
-	[ChainId.BASE]: {
+	8453: {
 		POOL_MANAGER: "0x498581ff718922c3f8e6a244956af099b2652b2b",
 		POSITION_MANAGER: "0x7c5f5a4bbd8fd63184577525326123b519429bdc",
 		STATE_VIEW: "0xa3c0c9b65bad0b08107aa264b0f3db444b867a71",
 		PERMIT2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
 	},
 	// Arbitrum
-	[ChainId.ARBITRUM]: {
+	42161: {
 		POOL_MANAGER: "0x4444444443c93dd47726ac8a34ae1f8baf6b1b82",
 		POSITION_MANAGER: "0x5e1a6231bd58b9e5b5e4a0eb5bc1f4b4f3c0d98d",
 		STATE_VIEW: "0x89b94a2de0f3d97eabf8dd33c4b2e5d0e1b5e3df",
@@ -194,58 +232,78 @@ const CONTRACTS: Record<
 	},
 } as const;
 
-// Uniswap v4 Position Manager ABI (focused on modifyLiquidities function)
-const POSITION_MANAGER_ABI = [
-	{
-		inputs: [
-			{ name: "unlockData", type: "bytes" },
-			{ name: "deadline", type: "uint256" },
-		],
-		name: "modifyLiquidities",
-		outputs: [],
-		stateMutability: "payable",
-		type: "function",
-	},
-] as const;
-
-// Actions enum for Uniswap v4 Position Manager
-const Actions = {
-	INCREASE_LIQUIDITY: 0,
-	INCREASE_LIQUIDITY_FROM_DELTAS: 1,
-	DECREASE_LIQUIDITY: 2,
-	MINT_POSITION: 3,
-	MINT_POSITION_FROM_DELTAS: 4,
-	BURN_POSITION: 5,
-	SETTLE_PAIR: 6,
-	TAKE_PAIR: 7,
-	SETTLE: 8,
-	TAKE: 9,
-	CLOSE_CURRENCY: 10,
-	CLEAR_OR_TAKE: 11,
-	SWEEP: 12,
-	WRAP: 13,
-	UNWRAP: 14,
+// WETH addresses by chain
+const WETH_ADDRESSES: Record<number, Address> = {
+	1: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", // Ethereum Mainnet
+	137: "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619", // Polygon
+	10: "0x4200000000000000000000000000000000000006", // Optimism
+	8453: "0x4200000000000000000000000000000000000006", // Base
+	42161: "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1", // Arbitrum
 } as const;
+
+// Helper function to get tick spacing based on fee tier
+function getTickSpacing(feeTier: number): number {
+	switch (feeTier) {
+		case 100:
+			return 1; // 0.01%
+		case 500:
+			return 10; // 0.05%
+		case 3000:
+			return 60; // 0.3%
+		case 10000:
+			return 200; // 1%
+		default:
+			return 60; // Default to 0.3% fee tier
+	}
+}
+
+// Helper function to calculate nearest usable tick
+function nearestUsableTick(tick: number, tickSpacing: number): number {
+	return Math.round(tick / tickSpacing) * tickSpacing;
+}
+
+// Helper to calculate pool ID (keccak256 hash of pool key)
+function calculatePoolId(
+	token0: Address,
+	token1: Address,
+	fee: number,
+	tickSpacing: number,
+	hookAddress: Address,
+): `0x${string}` {
+	// Encode the pool key according to Uniswap V4 PoolKey struct
+	const encodedPoolKey = encodeAbiParameters(
+		parseAbiParameters("address, address, uint24, int24, address"),
+		[token0, token1, fee, tickSpacing, hookAddress],
+	);
+
+	// Return keccak256 hash as bytes32
+	return keccak256(encodedPoolKey);
+}
 
 // Chain configurations for all supported mainnet chains
 const CHAIN_CONFIGS: { [key: number]: { chain: any; rpcUrl: string } } = {
-	[ChainId.MAINNET]: {
+	1: {
+		// Ethereum Mainnet
 		chain: mainnet,
 		rpcUrl: "https://ethereum-rpc.publicnode.com",
 	},
-	[ChainId.POLYGON]: {
+	137: {
+		// Polygon
 		chain: polygon,
 		rpcUrl: "https://polygon-rpc.com",
 	},
-	[ChainId.OPTIMISM]: {
+	10: {
+		// Optimism
 		chain: optimism,
 		rpcUrl: "https://mainnet.optimism.io",
 	},
-	[ChainId.BASE]: {
+	8453: {
+		// Base
 		chain: base,
 		rpcUrl: "https://mainnet.base.org",
 	},
-	[ChainId.ARBITRUM]: {
+	42161: {
+		// Arbitrum
 		chain: arbitrum,
 		rpcUrl: "https://arb1.arbitrum.io/rpc",
 	},
@@ -503,6 +561,11 @@ export const uniswapRouter = router({
 				recipient: z
 					.string()
 					.regex(/^0x[a-fA-F0-9]{40}$/, "Invalid Ethereum address"),
+				hookAddress: z
+					.string()
+					.regex(/^0x[a-fA-F0-9]{40}$/, "Invalid hook address")
+					.optional()
+					.default("0x0000000000000000000000000000000000000000"),
 			}),
 		)
 		.mutation(async ({ input }) => {
@@ -515,10 +578,11 @@ export const uniswapRouter = router({
 					feeTier,
 					fullRange,
 					tickRange = 500,
-					// slippageTolerance, // Currently unused
+					slippageTolerance,
 					recipient,
+					hookAddress,
 				} = input;
-				
+
 				// Validate chain support
 				const chainConfig = CHAIN_CONFIGS[tokenA.chainId];
 				if (!chainConfig) {
@@ -528,7 +592,6 @@ export const uniswapRouter = router({
 					} satisfies MintPositionResponse;
 				}
 
-				
 				// Get chain-specific contracts
 				const chainContracts = CONTRACTS[tokenA.chainId];
 				if (!chainContracts) {
@@ -537,56 +600,97 @@ export const uniswapRouter = router({
 						message: `Uniswap V4 contracts not deployed on chain ID: ${tokenA.chainId}`,
 					} satisfies MintPositionResponse;
 				}
-				
-				console.log("chainContracts", chainContracts);
-				// Create token definitions
-				const token0: Token = {
-					chainId: tokenA.chainId,
-					address: (tokenA.address ===
-					"0x0000000000000000000000000000000000000000"
-						? "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" // WETH for ETH
-						: tokenA.address) as Address,
-					decimals: tokenA.decimals,
-					symbol: tokenA.symbol,
-					name: tokenA.name,
-				};
 
-				const token1: Token = {
-					chainId: tokenB.chainId,
-					address: (tokenB.address ===
-					"0x0000000000000000000000000000000000000000"
-						? "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" // WETH for ETH
-						: tokenB.address) as Address,
-					decimals: tokenB.decimals,
-					symbol: tokenB.symbol,
-					name: tokenB.name,
-				};
+				// Determine WETH address for this chain
+				const wethAddress = WETH_ADDRESSES[tokenA.chainId];
+
+				// Normalize token addresses (convert native to WETH)
+				const token0Address =
+					tokenA.address === "0x0000000000000000000000000000000000000000"
+						? wethAddress
+						: (tokenA.address as Address);
+
+				const token1Address =
+					tokenB.address === "0x0000000000000000000000000000000000000000"
+						? wethAddress
+						: (tokenB.address as Address);
 
 				// Ensure token ordering (token0 < token1)
-				const [sortedToken0, sortedToken1] =
-					token0.address.toLowerCase() < token1.address.toLowerCase()
-						? [token0, token1]
-						: [token1, token0];
+				const needsSort =
+					token0Address.toLowerCase() > token1Address.toLowerCase();
 
-				const token0IsA = sortedToken0.address === token0.address;
+				const sortedToken0: TokenInfo = needsSort
+					? {
+							address: token1Address,
+							chainId: tokenB.chainId,
+							decimals: tokenB.decimals,
+							symbol: tokenB.symbol,
+							name: tokenB.name,
+						}
+					: {
+							address: token0Address,
+							chainId: tokenA.chainId,
+							decimals: tokenA.decimals,
+							symbol: tokenA.symbol,
+							name: tokenA.name,
+						};
+
+				const sortedToken1: TokenInfo = needsSort
+					? {
+							address: token0Address,
+							chainId: tokenA.chainId,
+							decimals: tokenA.decimals,
+							symbol: tokenA.symbol,
+							name: tokenA.name,
+						}
+					: {
+							address: token1Address,
+							chainId: tokenB.chainId,
+							decimals: tokenB.decimals,
+							symbol: tokenB.symbol,
+							name: tokenB.name,
+						};
+
+				const token0IsA = !needsSort;
 
 				// Calculate tick spacing based on fee tier
-				const getTickSpacing = (feeTier: number): number => {
-					switch (feeTier) {
-						case 100:
-							return 1; // 0.01%
-						case 500:
-							return 10; // 0.05%
-						case 3000:
-							return 60; // 0.3%
-						case 10000:
-							return 200; // 1%
-						default:
-							return 60; // Default to 0.3% fee tier
-					}
-				};
-
 				const tickSpacing = getTickSpacing(feeTier);
+
+				// Create viem client for fetching pool state
+				const publicClient = createPublicClient({
+					chain: chainConfig.chain,
+					transport: http(chainConfig.rpcUrl),
+				});
+
+				// Calculate pool ID
+				const poolId = calculatePoolId(
+					sortedToken0.address,
+					sortedToken1.address,
+					feeTier,
+					tickSpacing,
+					hookAddress as Address,
+				);
+
+				// Fetch current pool state from the blockchain
+				const [slot0, liquidity] = await Promise.all([
+					publicClient.readContract({
+						address: chainContracts.STATE_VIEW,
+						abi: STATE_VIEW_ABI,
+						functionName: "getSlot0",
+						args: [poolId as `0x${string}`],
+					}),
+					publicClient.readContract({
+						address: chainContracts.STATE_VIEW,
+						abi: STATE_VIEW_ABI,
+						functionName: "getLiquidity",
+						args: [poolId as `0x${string}`],
+					}),
+				]);
+
+				// Extract pool state data
+				const sqrtPriceX96Current = slot0[0] as bigint;
+				const currentTick = slot0[1] as number;
+				const currentLiquidity = liquidity as bigint;
 
 				// Calculate tick boundaries
 				let tickLower: number;
@@ -598,8 +702,6 @@ export const uniswapRouter = router({
 					tickLower = nearestUsableTick(MIN_TICK, tickSpacing);
 					tickUpper = nearestUsableTick(MAX_TICK, tickSpacing);
 				} else {
-					// Use a mock current tick for demonstration
-					const currentTick = 0; // In production, fetch this from the pool
 					tickLower = nearestUsableTick(currentTick - tickRange, tickSpacing);
 					tickUpper = nearestUsableTick(currentTick + tickRange, tickSpacing);
 				}
@@ -612,106 +714,37 @@ export const uniswapRouter = router({
 					Math.floor(amountB * 10 ** tokenB.decimals),
 				);
 
-				const amount0Desired = token0IsA
-					? amountADesired.toString()
-					: amountBDesired.toString();
-				const amount1Desired = token0IsA
-					? amountBDesired.toString()
-					: amountADesired.toString();
+				const amount0Desired = token0IsA ? amountADesired : amountBDesired;
+				const amount1Desired = token0IsA ? amountBDesired : amountADesired;
 
-				// Calculate slippage tolerance in basis points (for future use)
-				// const slippageToleranceBps = Math.floor(slippageTolerance * 100);
-				const deadline = Math.floor(Date.now() / 1000) + 20 * 60; // 20 minutes
-
-				// Calculate amounts with slippage tolerance (for future use in more complex implementations)
-				// const amount0Min = (BigInt(amount0Desired) * BigInt(10000 - slippageToleranceBps)) / BigInt(10000);
-				// const amount1Min = (BigInt(amount1Desired) * BigInt(10000 - slippageToleranceBps)) / BigInt(10000);
-
-				// Check if we need to send ETH value (for native currency handling)
-				const isToken0Native =
-					sortedToken0.address ===
-						"0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" &&
-					(tokenA.address === "0x0000000000000000000000000000000000000000" ||
-						tokenB.address === "0x0000000000000000000000000000000000000000");
-				const isToken1Native =
-					sortedToken1.address ===
-						"0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" &&
-					(tokenA.address === "0x0000000000000000000000000000000000000000" ||
-						tokenB.address === "0x0000000000000000000000000000000000000000");
-
-				// Calculate ETH value to send
-				let ethValue = "0";
-				if (isToken0Native) {
-					ethValue = amount0Desired.toString();
-				} else if (isToken1Native) {
-					ethValue = amount1Desired.toString();
-				}
-
-				// Encode the mint position parameters (for future use in more complete implementation)
-				// For Uniswap v4, we need to encode actions and their parameters
-				// const mintParams = {
-				//   poolKey: {
-				//     currency0: sortedToken0.address,
-				//     currency1: sortedToken1.address,
-				//     fee: feeTier,
-				//     tickSpacing: tickSpacing,
-				//     hooks: "0x0000000000000000000000000000000000000000", // No hooks for basic positions
-				//   },
-				//   tickLower: tickLower,
-				//   tickUpper: tickUpper,
-				//   liquidity: "0", // Will be calculated by the contract
-				//   amount0Max: amount0Desired,
-				//   amount1Max: amount1Desired,
-				//   owner: recipient,
-				//   hookData: "0x",
-				// };
-
-				// Create the actions array for v4 position manager
-				// Action 1: MINT_POSITION, Action 2: SETTLE_PAIR
-				const actions = new Uint8Array([
-					Actions.MINT_POSITION,
-					Actions.SETTLE_PAIR,
-				]);
-
-				// Encode parameters for each action (for future use in more complete implementation)
-				// This is a simplified encoding - in production you'd use proper ABI encoding
-				// const encodedParams = [
-				//   // MINT_POSITION params (simplified)
-				//   `0x${actions.reduce((acc, action) => acc + action.toString(16).padStart(2, "0"), "")}`,
-				//   // Additional parameter encoding would go here
-				// ];
-
-				// Create the unlock data for modifyLiquidities
-				const unlockData =
-					`0x${actions.reduce((acc, action) => acc + action.toString(16).padStart(2, "0"), "")}` as `0x${string}`;
-
-				// Generate the actual calldata using viem
-				const calldata = encodeFunctionData({
-					abi: POSITION_MANAGER_ABI,
-					functionName: "modifyLiquidities",
-					args: [unlockData, BigInt(deadline)],
-				});
-
-				// For now, return the transaction data instead of executing it
-				// In a production app, you would execute this transaction or return it for the frontend to execute
+				// Return pool state and position parameters for frontend SDK usage
 				return {
 					success: true,
-					message: "Position mint transaction prepared successfully",
-					transactionData: {
-						to: chainContracts.POSITION_MANAGER,
-						data: calldata,
-						value: ethValue, // Already converted to string
-						gas: "500000", // Convert BigInt to string for tRPC serialization
+					message:
+						"Pool state fetched successfully. Use @uniswap/v4-sdk on frontend to build transaction.",
+					poolState: {
+						sqrtPriceX96: sqrtPriceX96Current.toString(),
+						currentTick,
+						currentLiquidity: currentLiquidity.toString(),
+						poolId,
 					},
-					position: {
-						tokenA: sortedToken0,
-						tokenB: sortedToken1,
-						amountA: token0IsA ? amountA : amountB,
-						amountB: token0IsA ? amountB : amountA,
-						feeTier,
+					poolKey: {
+						token0: sortedToken0,
+						token1: sortedToken1,
+						fee: feeTier,
+						tickSpacing,
+						hookAddress: hookAddress ?? "0x0000000000000000000000000000000000000000",
+					},
+					positionParams: {
 						tickLower,
 						tickUpper,
-						liquidity: "mock_liquidity", // This would be calculated from actual pool data
+						amount0: amount0Desired.toString(),
+						amount1: amount1Desired.toString(),
+					},
+					contractAddresses: {
+						positionManager: chainContracts.POSITION_MANAGER,
+						stateView: chainContracts.STATE_VIEW,
+						permit2: chainContracts.PERMIT2,
 					},
 				} satisfies MintPositionResponse;
 			} catch (error) {

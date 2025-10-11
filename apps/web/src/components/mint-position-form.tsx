@@ -66,6 +66,7 @@ export function MintPositionForm({ onSuccess }: MintPositionFormProps) {
 	const {
 		execute: executeMint,
 		status: mintStatus,
+		error: mintError,
 		balanceError,
 		isReady,
 		isExecuting,
@@ -181,7 +182,7 @@ export function MintPositionForm({ onSuccess }: MintPositionFormProps) {
 		fetchPrice();
 	}, [tokenA, tokenB, feeTier, convertToUniswapToken]);
 
-	// Handle mint success
+	// Handle mint success and errors
 	useEffect(() => {
 		if (mintStatus === "success") {
 			toast.success("Position minted successfully!");
@@ -193,9 +194,13 @@ export function MintPositionForm({ onSuccess }: MintPositionFormProps) {
 			resetMint();
 			onSuccess?.();
 		} else if (mintStatus === "error") {
-			toast.error("Transaction failed. Please try again.");
+			// Show specific error message if available
+			const errorMessage = mintError || "Transaction failed. Please try again.";
+			toast.error(errorMessage);
+			// Reset status to idle after showing error so user can retry
+			setTimeout(() => resetMint(), 3000);
 		}
-	}, [mintStatus, resetMint, onSuccess]);
+	}, [mintStatus, mintError, resetMint, onSuccess]);
 
 	// Token selection handlers
 	const handleTokenASelect = useCallback((token: Token) => {
@@ -678,6 +683,25 @@ export function MintPositionForm({ onSuccess }: MintPositionFormProps) {
 								<span>
 									{currentChainInfo?.displayName || `Chain ${chainId}`}
 								</span>
+							</div>
+						</div>
+					</CardContent>
+				</Card>
+			)}
+
+			{/* Error Display */}
+			{mintError && mintStatus === "error" && (
+				<Card className="border-red-500 bg-red-50 dark:bg-red-900/20">
+					<CardContent className="pt-6">
+						<div className="flex items-start gap-2">
+							<AlertCircle className="mt-0.5 h-5 w-5 text-red-600 dark:text-red-500" />
+							<div className="flex-1">
+								<p className="font-medium text-red-800 dark:text-red-200">
+									Transaction Failed
+								</p>
+								<p className="text-red-700 text-sm dark:text-red-300">
+									{mintError}
+								</p>
 							</div>
 						</div>
 					</CardContent>

@@ -97,6 +97,7 @@ export function useSendCalls({ enable5792 = true }: UseSendCallsParams = {}): Us
 	const executeSequentialMode = useCallback(
 		async (params: SendCallsParams): Promise<SendCallsResult> => {
 			try {
+				debugger
 				console.log("Executing in sequential mode (fallback)");
 
 				const transactionHashes: string[] = [];
@@ -165,7 +166,8 @@ export function useSendCalls({ enable5792 = true }: UseSendCallsParams = {}): Us
 			setIsError(false);
 			setIsSuccess(false);
 			setError(null);
-
+			
+			
 			try {
 				const result = useBatchMode
 					? await executeBatchMode(params)

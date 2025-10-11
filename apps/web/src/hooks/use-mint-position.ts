@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { type Address, type Hex, type TransactionRequest, formatUnits, parseUnits, zeroAddress } from "viem";
+import { type Address, type Hex, formatUnits, parseUnits, zeroAddress } from "viem";
+import { Token as SDKToken, Percent } from "@uniswap/sdk-core";
+import { Pool, Position, V4PositionManager } from "@uniswap/v4-sdk";
 import { useBalanceChecks } from "./use-balance-checks";
 import { useCallsStatus } from "./use-calls-status";
 import { useSendCalls } from "./use-send-calls";
@@ -226,15 +228,68 @@ export function useMintPosition({
 				recipient: owner,
 			});
 
-			if (!trpcResult.success || !trpcResult.transactionData) {
+			if (!trpcResult.success) {
 				setError(trpcResult.message || "Failed to prepare transaction");
 				setStatus("error");
 				return;
 			}
 
-			// 3. Extract transaction data and router address
-			const txData = trpcResult.transactionData as unknown as TransactionRequest;
-			const routerAddr = txData.to as Address;
+			// 3. Build transaction using @uniswap/v4-sdk
+			const { poolState, poolKey, positionParams, contractAddresses } = trpcResult;
+
+			// Create SDK token instances
+			const sdkToken0 = new SDKToken(
+				poolKey.token0.chainId,
+				poolKey.token0.address,
+				poolKey.token0.decimals,
+				poolKey.token0.symbol,
+				poolKey.token0.name,
+			);
+
+			const sdkToken1 = new SDKToken(
+				poolKey.token1.chainId,
+				poolKey.token1.address,
+				poolKey.token1.decimals,
+				poolKey.token1.symbol,
+				poolKey.token1.name,
+			);
+
+			// Create pool instance from backend state
+			const pool = new Pool(
+				sdkToken0,
+				sdkToken1,
+				poolKey.fee,
+				poolKey.tickSpacing,
+				poolKey.hookAddress as Address,
+				poolState.sqrtPriceX96, // BigintIsh accepts string
+				poolState.currentLiquidity, // BigintIsh accepts string
+				poolState.currentTick,
+			);
+
+			// Create position from amounts
+			const position = Position.fromAmounts({
+				pool,
+				tickLower: positionParams.tickLower,
+				tickUpper: positionParams.tickUpper,
+				amount0: positionParams.amount0, // BigintIsh accepts string
+				amount1: positionParams.amount1, // BigintIsh accepts string
+				useFullPrecision: true,
+			});
+
+			// Create mint options with slippage tolerance
+			const slippagePct = new Percent(Math.floor(slippageTolerance * 100), 10_000);
+			const deadline = Math.floor(Date.now() / 1000) + 20 * 60; // 20 minutes from now
+
+			const mintOptions = {
+				slippageTolerance: slippagePct,
+				deadline,
+				recipient: owner,
+			};
+
+			// Generate transaction calldata
+			const { calldata, value } = V4PositionManager.addCallParameters(position, mintOptions);
+
+			const routerAddr = contractAddresses.positionManager;
 
 			// 4. Check allowances manually now that we have the router address
 			setStatus("checking-allowance");
@@ -257,15 +312,15 @@ export function useMintPosition({
 				transport: http(),
 			});
 
-			// Parse token amounts
+			// Parse token amounts (safe because we checked tokenA/tokenB at function start)
 			const tokensToCheck = [
 				{
-					address: tokenA.address as Address,
-					amount: parseUnits(amountA, tokenA.decimals),
+					address: tokenA!.address as Address,
+					amount: parseUnits(amountA, tokenA!.decimals),
 				},
 				{
-					address: tokenB.address as Address,
-					amount: parseUnits(amountB, tokenB.decimals),
+					address: tokenB!.address as Address,
+					amount: parseUnits(amountB, tokenB!.decimals),
 				},
 			];
 
@@ -336,9 +391,9 @@ export function useMintPosition({
 
 			// Add mint transaction
 			calls.push({
-				to: txData.to as Address,
-				data: txData.data as Hex,
-				value: (txData.value as bigint) || 0n,
+				to: routerAddr,
+				data: calldata as Hex,
+				value: BigInt(value),
 			});
 
 			// 6. Execute batch transaction (or sequential if EIP-5792 not supported)

@@ -10,11 +10,11 @@ export default defineConfig({
 	resolve: {
 		alias: {
 			"@": path.resolve(__dirname, "./src"),
+			// Force all ethers imports to use ethers v5
+			ethers: path.resolve(__dirname, "../../node_modules/.bun/ethers@5.8.0/node_modules/ethers"),
 		},
 	},
-	build: {
-		rollupOptions: {
-			external: ["ethers"],
-		},
+	optimizeDeps: {
+		include: ["ethers"],
 	},
 });
